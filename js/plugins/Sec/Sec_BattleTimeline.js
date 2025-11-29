@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v2.4] 战斗时间轴 - 目标修正与颜色定制版
+ * @plugindesc [v2.6] 战斗时间轴 - 幽灵锁死与多目标联动版
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
@@ -15,7 +15,7 @@
  * @desc 时间轴窗口的 X 坐标。
  * @type number
  * @min -9999
- * @default 80
+ * @default 50
  *
  * @param TimelineY
  * @text 时间轴 Y 坐标
@@ -92,30 +92,17 @@
  * @type number
  * @decimals 2
  * @default 0.80
- *
- * @help
- * ============================================================================
- * 更新日志 (v2.4)
- * ============================================================================
- * 1. 【BUG修复】我方角色选择下沉失效修复。
- * - 修正了获取选中队友的逻辑，现在选择队友时图标会正确下沉。
- *
- * 2. 【逻辑优化】自身不下沉。
- * - 当目标是自己时，最左侧的“当前行动图标”保持不动，不会下沉。
- * - 如果该角色在未来还有预测图标，那些未来的图标会下沉。
- *
- * 3. 【外观更新】
- * - 最左侧当前行动者边框颜色：#FFCA5F (金色)。
- * - 其他普通图标边框颜色：#490C23 (深红)。
- * - 默认坐标更新为 X=80, Y=210。
- *
- * ============================================================================
  */
 
 (() => {
+    'use strict';
+
     const pluginName = "Sec_BattleTimeline";
     const parameters = PluginManager.parameters(pluginName);
     
+    // ========================================================================
+    //  配置参数读取
+    // ========================================================================
     const Conf = {
         x: Number(parameters['TimelineX'] || 80),
         y: Number(parameters['TimelineY'] === undefined ? 210 : parameters['TimelineY']),
@@ -128,26 +115,32 @@
         showBg: parameters['ShowBackgroundBox'] === 'true',
         borderColor: parameters['BoxBorderColor'] || "#490C23",
         enemyScale: Number(parameters['EnemyScale'] || 0.8),
-        animSpeed: 0.15 
+        animSpeed: 0.15 // 动画插值速度 (0.0-1.0)，越小越平滑但延迟越高
     };
 
-    // 自动坐标计算 (备用)
+    /**
+     * 自动计算时间轴 Y 坐标
+     * @description 如果 TimelineY 设为 -1，则尝试根据 Sec_CustomDrawBattleStatus 的脸图位置进行定位。
+     * @returns {number} 计算出的 Y 坐标
+     */
     function getAutoY() {
         const SecStatusParams = PluginManager.parameters('Sec_CustomDrawBattleStatus');
         if (SecStatusParams && Object.keys(SecStatusParams).length > 0) {
             const winY = Number(SecStatusParams['WindowY'] || 450);
             const faceScale = Number(SecStatusParams['FaceScale'] || 1.0);
             const faceOffsetY = Number(SecStatusParams['FaceOffsetY'] || 0);
+            // 估算脸图实际高度
             const estFaceSize = Math.floor((ImageManager.faceWidth || 144) * faceScale);
             return winY + faceOffsetY + estFaceSize + 10; 
         }
-        return 200; 
+        return 200; // 默认回退值
     }
 
     // ========================================================================
     //  Game_Battler 扩展
     // ========================================================================
     
+    // 捕获单位死亡事件，通知时间轴播放死亡动画
     const _Game_Battler_performCollapse = Game_Battler.prototype.performCollapse;
     Game_Battler.prototype.performCollapse = function() {
         _Game_Battler_performCollapse.call(this);
@@ -157,28 +150,45 @@
     };
 
     // ========================================================================
-    //  BattleManager 预测引擎
+    //  BattleManager 扩展：预测引擎
     // ========================================================================
     
+    // 存储计算好的预测列表 [{battler, isReady}, ...]
     BattleManager._predictedTimeline = [];
 
+    /**
+     * 计算单位到达行动点 (TPB=1.0) 所需的时间 Tick 数
+     * @param {Game_Battler} battler 目标单位
+     * @returns {number} 所需 Ticks
+     */
     BattleManager.tpbTicksToReady = function(battler) {
         if (battler.isTpbReady() || battler.isTpbCharged() || battler._tpbState === 'acting') {
-            return 0;
+            return 0; // 已就绪，时间为0
         }
+        
         let needed = 0;
         const speed = battler.tpbSpeed();
-        if (speed === 0) return 9999; 
+        if (speed === 0) return 9999; // 防止除以0
+
         const refTime = this.isActiveTpb() ? 240 : 60;
         const acceleration = speed / refTime;
+
         if (battler._tpbState === 'casting') {
+            // 吟唱中：计算剩余吟唱时间
             needed = (battler.tpbRequiredCastTime() - battler._tpbCastTime) / acceleration;
         } else {
+            // 充能中：计算剩余充能时间
             needed = (1.0 - battler._tpbChargeTime) / acceleration;
         }
+        
         return Math.max(0, needed);
     };
 
+    /**
+     * 计算单位跑完一整圈 (0% -> 100%) 所需的时间 Tick 数
+     * @param {Game_Battler} battler 目标单位
+     * @returns {number} 完整周期 Ticks
+     */
     BattleManager.tpbTicksFullCycle = function(battler) {
         const speed = battler.tpbSpeed();
         if (speed === 0) return 9999;
@@ -187,10 +197,17 @@
         return 1.0 / acceleration;
     };
 
+    /**
+     * 更新时间轴预测列表
+     * @description 使用模拟算法预测未来 N 个回合的行动顺序。
+     */
     BattleManager.updateTimelinePrediction = function() {
         if (!this.isTpb()) return;
 
+        // 1. 获取所有存活且可见的单位
         const allBattlers = this.allBattleMembers().filter(b => b.isAlive() && b.isAppeared());
+        
+        // 2. 初始化模拟状态
         let simState = allBattlers.map(b => ({
             battler: b,
             ticksNeeded: this.tpbTicksToReady(b),
@@ -200,7 +217,9 @@
         const prediction = [];
         let predictionCount = 0;
 
+        // 3. 优先处理已就绪单位 (Ticks <= 0)
         const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.0001);
+        // 按索引排序以保证稳定性
         readyBattlers.sort((a, b) => {
             if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.0001) {
                 return a.battler.index() - b.battler.index();
@@ -212,23 +231,35 @@
             if (predictionCount < Conf.maxPred) {
                 prediction.push({ battler: s.battler, isReady: true });
                 predictionCount++;
+                // 模拟行动后，该单位需要跑完一整圈才能再次行动
                 s.ticksNeeded += s.fullCycle;
             }
         });
 
+        // 4. 模拟未来回合 (时间轮算法)
         while (predictionCount < Conf.maxPred) {
+            // 找出最快到达行动点的单位
             simState.sort((a, b) => a.ticksNeeded - b.ticksNeeded);
             const winner = simState[0];
-            if (!winner) break;
+            
+            if (!winner) break; // 防止异常
+
+            // 推进时间
             const elapsed = winner.ticksNeeded;
             simState.forEach(s => s.ticksNeeded -= elapsed);
+
+            // 记录预测结果
             prediction.push({ battler: winner.battler, isReady: false });
             predictionCount++;
+
+            // 重置赢家状态
             winner.ticksNeeded = winner.fullCycle;
         }
+
         this._predictedTimeline = prediction;
     };
 
+    // 挂钩 Update 循环
     const _BattleManager_update = BattleManager.update;
     BattleManager.update = function(timeActive) {
         _BattleManager_update.call(this, timeActive);
@@ -238,29 +269,37 @@
     };
 
     // ========================================================================
-    //  UI 组件
+    //  UI 组件：VisualItem
     // ========================================================================
     
+    /**
+     * 视觉对象类
+     * @description 管理单个图标的动画状态（位置、大小、透明度、幽灵计时）。
+     */
     class VisualItem {
         constructor(battler, x, y, size) {
             this.battler = battler;
+            // 当前渲染属性
             this.x = x;
             this.y = y;
             this.size = size;
-            this.opacity = 0; 
+            this.opacity = 0; // 初始透明，产生淡入效果
             
+            // 目标属性 (动画终点)
             this.targetX = x;
             this.targetY = y;
             this.targetSize = size;
             this.targetOpacity = 255;
             
-            this.isGhost = false;
-            this.ghostTimer = 0;
-            this.isReady = false;
-            this.matched = false;
+            // 状态标记
+            this.isGhost = false;   // 是否为死亡幽灵
+            this.ghostTimer = 0;    // 幽灵倒计时
+            this.isReady = false;   // 是否处于就绪状态
+            this.matched = false;   // 本帧是否匹配到了预测数据
         }
 
         update() {
+            // 平滑插值动画 (Lerp)
             const spd = Conf.animSpeed;
             this.x += (this.targetX - this.x) * spd;
             this.y += (this.targetY - this.y) * spd;
@@ -273,43 +312,69 @@
         }
     }
 
+    // ========================================================================
+    //  UI 组件：Window_BattleTimeline
+    // ========================================================================
+
     class Window_BattleTimeline extends Window_Base {
         constructor(rect) {
             super(rect);
-            this.padding = 0; 
-            this.createContents(); 
-            this.setBackgroundType(2); 
-            this._visualItems = []; 
+            this.padding = 0; // 移除内边距，确保绘图区域最大化
+            this.createContents(); // 重建画布
+            this.setBackgroundType(2); // 背景全透明
+            
+            this._visualItems = []; // 视觉对象池
         }
 
+        /**
+         * 获取当前玩家选中的目标列表
+         * @returns {Array<Game_Battler>} 选中的目标数组
+         */
         getCurrentSelection() {
             const scene = SceneManager._scene;
-            if (!(scene instanceof Scene_Battle)) return null;
+            if (!(scene instanceof Scene_Battle)) return [];
             
-            // 1. 检查敌人选择窗口
+            const action = BattleManager.inputtingAction();
+            // 安全检查：防止 action 或 item 为空导致崩溃
+            const isForAll = (action && action.item()) ? action.isForAll() : false;
+
+            // 1. 敌人选择窗口激活
             if (scene._enemyWindow && scene._enemyWindow.active) {
-                return scene._enemyWindow.enemy();
-            }
-            
-            // 2. 检查角色选择窗口 (修复 BUG 的关键)
-            // 很多插件或者默认RMMZ不会给 ActorWindow 直接加 actor() 方法
-            // 所以我们要通过 index 去 party 获取
-            if (scene._actorWindow && scene._actorWindow.active) {
-                const index = scene._actorWindow.index();
-                if (index >= 0) {
-                    return $gameParty.battleMembers()[index];
+                if (isForAll) {
+                    return $gameTroop.aliveMembers();
+                } else {
+                    const enemy = scene._enemyWindow.enemy();
+                    return enemy ? [enemy] : [];
                 }
             }
             
-            return null;
+            // 2. 角色选择窗口激活
+            if (scene._actorWindow && scene._actorWindow.active) {
+                if (isForAll) {
+                    return $gameParty.battleMembers();
+                } else {
+                    const index = scene._actorWindow.index();
+                    if (index >= 0) {
+                        return [$gameParty.battleMembers()[index]];
+                    }
+                }
+            }
+            
+            return [];
         }
 
+        /**
+         * 响应单位死亡事件
+         * @param {Game_Battler} battler 死亡的单位
+         */
         onBattlerDeath(battler) {
+            // 将所有关联该单位的图标转为幽灵
+            // 保持当前位置不变，开始倒计时
             for (let i = this._visualItems.length - 1; i >= 0; i--) {
                 const item = this._visualItems[i];
                 if (item.battler === battler && !item.isGhost) {
                     item.isGhost = true;
-                    item.ghostTimer = 60; 
+                    item.ghostTimer = 60; // 30帧闪烁 + 30帧留空
                 }
             }
         }
@@ -321,15 +386,27 @@
             this.draw();
         }
 
+        /**
+         * 核心排版算法：计算每个图标的目标位置
+         * @description 使用“幽灵锁死 (Slot Locking)”策略防止抖动。
+         */
         updateLayoutTargets() {
             const predList = BattleManager._predictedTimeline || [];
-            const selection = this.getCurrentSelection();
+            const selections = this.getCurrentSelection();
 
+            // 1. 重置匹配标记 (仅针对非幽灵)
             this._visualItems.forEach(i => { if(!i.isGhost) i.matched = false; });
 
-            const activeItems = [];
+            // 2. 整理幽灵列表
+            const ghosts = this._visualItems.filter(i => i.isGhost);
+            // 幽灵按当前屏幕 X 坐标排序，确保视觉顺序正确
+            ghosts.sort((a, b) => a.x - b.x);
+            
+            // 3. 整理活体列表 (生成或复用 VisualItem)
+            const liveItems = [];
             const findItem = (battler) => this._visualItems.find(it => it.battler === battler && !it.isGhost && !it.matched);
-
+            
+            // 计算出生点 (屏幕最右侧之外)
             let maxVisualX = 0;
             this._visualItems.forEach(i => maxVisualX = Math.max(maxVisualX, i.x));
             const spawnX = (maxVisualX > 0 ? maxVisualX : 0) + Conf.stdSize + Conf.spacing;
@@ -342,54 +419,88 @@
                 }
                 item.matched = true;
                 item.isReady = pred.isReady;
-                activeItems.push(item);
+                liveItems.push(item);
             }
 
-            const ghosts = this._visualItems.filter(i => i.isGhost);
-            const finalList = [...activeItems];
-            
-            ghosts.sort((a, b) => a.x - b.x);
-            
-            for (const ghost of ghosts) {
-                const estimatedIdx = Math.round((ghost.x - 4) / (Conf.stdSize + Conf.spacing));
-                let idx = Math.max(0, Math.min(estimatedIdx, finalList.length));
-                finalList.splice(idx, 0, ghost);
-            }
-
+            // 4. 混合分配位置 (核心逻辑)
             let currentX = 4;
+            let slotIndex = 0; // 当前正在填充第几个显示槽位
+            let liveIndex = 0;
+            let ghostIndex = 0;
             
-            for (let i = 0; i < finalList.length; i++) {
-                const item = finalList[i];
-                const isFirst = (i === 0);
+            // 循环填充槽位，直到填满预测深度或没有更多项
+            while (liveIndex < liveItems.length || ghostIndex < ghosts.length) {
+                if (slotIndex >= Conf.maxPred + ghosts.length) break;
+
+                const isFirst = (slotIndex === 0);
+                const slotSize = isFirst ? Conf.firstSize : Conf.stdSize;
                 
-                // 1. 尺寸
-                const targetSize = isFirst ? Conf.firstSize : Conf.stdSize;
+                let takenByGhost = null;
                 
-                // 2. Y轴下沉计算
-                // 逻辑：如果是选中的目标，并且不是最左侧的当前行动者，则下沉
-                const isSelected = (selection && item.battler === selection);
-                const shouldSink = isSelected && !isFirst; // 【自身行动不下沉逻辑】
-                
-                const targetY = 4 + (shouldSink ? Conf.sinkY : 0);
-                
-                // 3. 目标设定
-                item.targetX = currentX;
-                item.targetY = targetY;
-                item.targetSize = targetSize;
-                
-                if (item.isGhost) {
-                    item.targetOpacity = (item.ghostTimer > 30) ? 255 : 0; 
-                } else if (item.matched) {
-                    item.targetOpacity = 255;
-                } else {
-                    item.targetOpacity = 0;
+                // 检查当前槽位是否被幽灵“锁死”
+                if (ghostIndex < ghosts.length) {
+                    const ghost = ghosts[ghostIndex];
+                    // 判定标准：幽灵的 X 坐标小于当前槽位的中点
+                    // 意味着幽灵在这个槽位或更前面，它拥有优先占位权
+                    if (ghost.x < currentX + (slotSize / 2)) {
+                        takenByGhost = ghost;
+                        ghostIndex++;
+                    }
                 }
                 
-                currentX += targetSize + Conf.spacing;
+                let item = null;
+                
+                if (takenByGhost) {
+                    // 槽位被幽灵占据
+                    item = takenByGhost;
+                    item.targetX = currentX;
+                    item.targetSize = slotSize;
+                } else if (liveIndex < liveItems.length) {
+                    // 槽位空闲，填入预测列表中的下一位
+                    item = liveItems[liveIndex];
+                    liveIndex++;
+                    item.targetX = currentX;
+                    item.targetSize = slotSize;
+                } else {
+                    break;
+                }
+                
+                // --- 计算通用目标属性 ---
+                
+                // Y轴下沉逻辑
+                const isSelected = selections.includes(item.battler);
+                // 规则：选中 且 (不是视觉首位 或 是幽灵)
+                // 实际上我们希望：如果是首位且是自己行动，通常不下沉。
+                // 这里的 shouldSink 逻辑：如果是选中的目标，且该图标不是排在第一位的“当前行动者”，则下沉。
+                // 注意：如果幽灵卡在第一位，它也会被判定为 isFirst。
+                const shouldSink = isSelected && !isFirst; 
+                
+                item.targetY = 4 + (shouldSink ? Conf.sinkY : 0);
+                
+                // 透明度逻辑
+                if (item.isGhost) {
+                    // 幽灵阶段二(timer<=30)时不可见，但仍占位
+                    item.targetOpacity = (item.ghostTimer > 30) ? 255 : 0; 
+                } else {
+                    item.targetOpacity = 255;
+                }
+                
+                // 移动 X 指针到下一格
+                currentX += slotSize + Conf.spacing;
+                slotIndex++;
             }
             
+            // 5. 清理未分配到的项
+            this._visualItems.forEach(item => {
+                if (!item.isGhost && !item.matched) {
+                    item.targetOpacity = 0; // 淡出
+                }
+            });
+            
+            // 物理移除垃圾对象
             for (let i = this._visualItems.length - 1; i >= 0; i--) {
                 const item = this._visualItems[i];
+                // 移除条件：(幽灵且倒计时结束) 或 (非幽灵且完全透明)
                 if ((item.isGhost && item.ghostTimer <= 0) || 
                     (!item.isGhost && !item.matched && item.opacity <= 1)) {
                     this._visualItems.splice(i, 1);
@@ -405,14 +516,13 @@
             if (!this.contents) return;
             this.contents.clear();
             
+            // 绘制循环
             for (const item of this._visualItems) {
                 if (item.opacity <= 1) continue;
                 
+                // 闪烁判定：幽灵的前30帧
                 const isFlashing = (item.isGhost && item.ghostTimer > 30);
-                
-                // 判断是否是首位，用于绘制金色边框
-                // 这里的判断依据是 size 是否接近 FirstSize
-                // 为了准确，我们直接判断 item.x 是否在最左边附近
+                // 首位判定：根据坐标模糊判断
                 const isFirstVisual = (Math.abs(item.x - 4) < 10); 
 
                 this.drawTimelineItem(item, isFlashing, isFirstVisual);
@@ -429,7 +539,7 @@
             ctx.save();
             ctx.globalAlpha = opacity / 255;
 
-            // 1. 背景
+            // 1. 背景 (半透明黑底)
             if (Conf.showBg) {
                 ctx.save();
                 ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
@@ -437,14 +547,14 @@
                 ctx.restore();
             }
 
-            // 2. 图标
+            // 2. 图标内容
             if (item.battler.isActor()) {
                 this.drawActorIcon(item.battler, x, y, size);
             } else {
                 this.drawEnemyIcon(item.battler, x, y, size);
             }
 
-            // 3. 闪烁
+            // 3. 死亡闪烁层 (白色叠加)
             if (isFlashing) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
@@ -454,25 +564,25 @@
                 ctx.restore();
             }
 
-            // 4. 边框颜色定制
+            // 4. 边框绘制
             ctx.save();
             ctx.lineWidth = 1; 
             
-            let color = Conf.borderColor; // 默认深红
-            
+            let color = Conf.borderColor; 
             if (isFirstVisual) {
                 color = "#FFCA5F"; // 首位金色
                 ctx.lineWidth = 2; // 首位加粗
             } else if (item.isReady) {
-                color = "#FFFF00"; // 其他就绪单位黄色高亮 (保留此逻辑以区分 ready 状态)
+                color = "#FFFF00"; // 就绪黄色
             }
 
             ctx.strokeStyle = color;
+            // 像素偏移修正 (+0.5) 保证线条锐利
             const offset = ctx.lineWidth / 2;
             ctx.strokeRect(x + offset, y + offset, size - ctx.lineWidth, size - ctx.lineWidth); 
             ctx.restore();
 
-            ctx.restore();
+            ctx.restore(); // 恢复 globalAlpha
         }
 
         drawActorIcon(actor, x, y, size) {
@@ -514,7 +624,7 @@
     }
 
     // ========================================================================
-    //  Scene_Battle 扩展
+    //  Scene_Battle 扩展：窗口创建
     // ========================================================================
 
     const _Scene_Battle_createAllWindows = Scene_Battle.prototype.createAllWindows;
@@ -528,6 +638,7 @@
     Scene_Battle.prototype.createTimelineWindow = function() {
         const w = Conf.width > 0 ? Conf.width : Graphics.boxWidth;
         const maxIconH = Math.max(Conf.firstSize, Conf.stdSize);
+        // 计算窗口高度：图标高度 + 下沉距离 + 缓冲
         const h = maxIconH + Conf.sinkY + 30; 
         
         const x = Conf.x;
@@ -536,6 +647,7 @@
         const rect = new Rectangle(x, y, w, h);
         this._timelineWindow = new Window_BattleTimeline(rect);
         BattleManager._timelineWindow = this._timelineWindow;
+        // 添加到场景的最上层
         this.addWindow(this._timelineWindow);
     };
 
