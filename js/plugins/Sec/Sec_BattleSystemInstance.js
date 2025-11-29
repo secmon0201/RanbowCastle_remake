@@ -3,13 +3,15 @@
  * @plugindesc [重构版v2.1] 战斗系统实例插件 - 职业被动与技能主动分离
  * @author Secmon (Refactored by Gemini)
  * @version 2.1.0
- * * @help
+ *
+ * @help
  * ============================================================================
  * ★ 新旧功能迁移与对照指南 ★
  * ============================================================================
  * 本插件将原有的分散功能整合为“职业被动”和“技能主动”两大模块。
  * 请按照下表修改数据库中的备注配置。
- * * ----------------------------------------------------------------------------
+ *
+ * ----------------------------------------------------------------------------
  * 1. 普攻特效 (原功能1：普攻回蓝)
  * ----------------------------------------------------------------------------
  * [旧版机制]：底层写死，所有角色普攻强制回10点MP。无法修改。
@@ -19,7 +21,8 @@
  * [扩展用法]：
  * <战斗触发:Attack, a.gainTp(5)>      // 普攻获得5点TP
  * <战斗触发:Attack, a.gainHp(a.atk)>  // 普攻吸血(回复等同攻击力的血量)
- * * ----------------------------------------------------------------------------
+ *
+ * ----------------------------------------------------------------------------
  * 2. 受击特效 (原功能2：受击回蓝)
  * ----------------------------------------------------------------------------
  * [旧版机制]：底层写死，所有角色受击强制回5点MP。无法修改。
@@ -29,7 +32,8 @@
  * [扩展用法]：
  * <战斗触发:Hit, v[1]+=1>             // 受击时让1号变量+1
  * <战斗触发:Hit, a.gainTp(10)>        // 受击获得10点TP(怒气模式)
- * * ----------------------------------------------------------------------------
+ *
+ * ----------------------------------------------------------------------------
  * 3. 状态交互 (原功能3：状态伤害 & 原功能7：Buff治疗)
  * ----------------------------------------------------------------------------
  * [旧版机制]：伤害和治疗分开写，标签不同。
@@ -41,7 +45,8 @@
  * [迁移写法]：
  * 原伤害：<状态交互:5, a.atk*2, true, Target>
  * 原治疗：<状态交互:30, -(a.mat*2), true, AllAllies>  (注意公式前的负号)
- * * ----------------------------------------------------------------------------
+ *
+ * ----------------------------------------------------------------------------
  * 4. 力场共鸣 (原功能5：持续伤害/扩散 & 原功能6：终结伤害/聚合)
  * ----------------------------------------------------------------------------
  * [旧版机制]：扩散伤害和根据数量终结分开写。
@@ -53,7 +58,8 @@
  * [迁移写法]：
  * 原扩散：<力场共鸣:20, Spread, a.mat*2, false>
  * 原终结：<力场共鸣:21, Gather, a.atk*n, true>
- * * ----------------------------------------------------------------------------
+ *
+ * ----------------------------------------------------------------------------
  * 5. 其他高级功能 (完全兼容旧版，无需修改)
  * ----------------------------------------------------------------------------
  * 以下功能标签保持原样，直接写在【技能】备注中：
@@ -61,7 +67,8 @@
  * - 功能8：<累计反击:状态ID, 属性类型, 属性值, 反击公式>
  * - 功能9：<伤害转移:状态ID, 比例...>
  * - 功能10：<弹射伤害:初始公式, 弹射公式, 次数...>
- * * ============================================================================
+ *
+ * ============================================================================
  * ★ 参数变量说明 ★
  * ============================================================================
  * 在所有公式中，您可以使用以下变量：
@@ -74,45 +81,58 @@
  */
 
 (() => {
+    'use strict';
+
     const pluginName = "BattleSystemInstance";
 
     // ======================================================================
-    // 全局数据存储
+    // 1. 全局数据存储
+    //    用于跨回合或跨行动存储战斗状态
     // ======================================================================
-    // 存储每个角色的累计受到伤害值 (用于功能8:累计反击)
+
+    /**
+     * 存储每个角色的累计受到伤害值。
+     * Key: ActorID (负数表示EnemyID), Value: 累计伤害数值
+     * 用途：功能8 (累计反击)
+     */
     const _Sec_AccumulatedDamage = new Map();
-    // 存储伤害转移的标记信息 (用于功能9:伤害转移)
+
+    /**
+     * 存储伤害转移的标记信息。
+     * Key: 受击者ActorID, Value: { markerId: 承担者ID, transferRate: 比例, ... }
+     * 用途：功能9 (伤害转移)
+     */
     const _Sec_TransferMarker = new Map();
 
 
     // ======================================================================
-    // 核心逻辑挂钩：Game_Action.prototype.executeDamage
-    // 作用：在伤害结算时切入，处理所有主动和被动效果
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage
+    //    作用：在伤害结算时切入，处理所有主动和被动效果
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         
-        // 1. 执行原版伤害计算逻辑，先让伤害生效
+        // ------------------------------------------------------------------
+        // 2.0 执行原版逻辑
+        // ------------------------------------------------------------------
+        // 先让伤害生效，保证 actualDamage 是准确的最终伤害
         _Game_Action_executeDamage.call(this, target, value);
 
         // 获取上下文信息
-        const subject = this.subject();     // 动作使用者
-        const item = this.item();           // 使用的技能/物品对象
+        const subject = this.subject();                // 动作使用者
+        const item = this.item();                      // 使用的技能/物品对象
         const actualDamage = target.result().hpDamage; // 获取实际造成的HP伤害
 
-        // ==================================================================
-        // 【模块 A】 职业被动机制 (Class Passives)
-        // 规则：仅扫描 Actor 所属 Class 的备注。不扫描状态、装备。
-        // ==================================================================
+        // ------------------------------------------------------------------
+        // 2.1 【模块 A】 职业被动机制 (Class Passives)
+        //     规则：仅扫描 Actor 所属 Class 的备注。
+        // ------------------------------------------------------------------
         
-        // --- A1. 普攻特效 (对应原功能1) ---
-        // 触发条件：
-        // 1. 使用者是角色 (Actor)
-        // 2. 当前动作是【普通攻击】 (isAttack)
+        // --- A1. 普攻特效 (Attack Effects) ---
+        // 触发条件：使用者是角色 && 动作是普攻
         if (subject && subject.isActor() && this.isAttack()) {
-            const classData = subject.currentClass(); // 获取职业数据对象
+            const classData = subject.currentClass();
             
-            // 检查职业备注是否存在
             if (classData && classData.note) {
                 // 正则匹配：<战斗触发:Attack, 公式>
                 const matches = classData.note.matchAll(/<战斗触发:Attack,([^>]+)>/gi);
@@ -120,14 +140,14 @@
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        // 准备公式变量
-                        const a = subject; // a 代表攻击者(自己)
-                        const b = target;  // b 代表挨打的人
+                        // 上下文变量准备
+                        const a = subject; // a: 攻击者(自己)
+                        const b = target;  // b: 被攻击者
                         const v = $gameVariables._data;
                         const s = $gameSwitches._data;
                         const dmg = actualDamage;
                         
-                        // 细节优化：如果公式包含回蓝(gainMp)，临时屏蔽日志以防刷屏
+                        // 细节优化：防止 gainMp 刷屏日志
                         if (formula.includes('gainMp')) subject._ignoreMpLog = true;
                         
                         // 执行公式
@@ -142,15 +162,12 @@
             }
         }
 
-        // --- A2. 受击特效 (对应原功能2) ---
-        // 触发条件：
-        // 1. 目标是角色 (Actor)
-        // 2. 确实受到了攻击判定 (命中 OR 产生了伤害)
+        // --- A2. 受击特效 (Hit Effects) ---
+        // 触发条件：目标是角色 && (命中 || 造成伤害)
         if (target && target.isActor()) {
             const result = target.result();
-            // 只要命中了(isHit) 或者 确实扣血了(damage > 0)
             if (result.isHit() || actualDamage > 0) {
-                const classData = target.currentClass(); // 获取受击者的职业
+                const classData = target.currentClass();
                 
                 if (classData && classData.note) {
                     // 正则匹配：<战斗触发:Hit, 公式>
@@ -159,14 +176,14 @@
                     for (const match of matches) {
                         const formula = match[1].trim();
                         try {
-                            // 准备公式变量
-                            const a = target;  // 【注意】在受击触发中，a 代表受击者(自己)
-                            const b = subject; // b 代表攻击来源
+                            // 上下文变量准备
+                            const a = target;  // 【注意】a: 受击者(自己)
+                            const b = subject; // b: 攻击来源
                             const v = $gameVariables._data;
                             const s = $gameSwitches._data;
                             const dmg = actualDamage;
 
-                            // 细节优化：屏蔽回蓝日志
+                            // 细节优化：防止 gainMp 刷屏日志
                             if (formula.includes('gainMp')) target._ignoreMpLog = true;
                             
                             eval(formula);
@@ -184,15 +201,15 @@
         if (!item) return;
 
 
-        // ==================================================================
-        // 【模块 B】 技能主动机制 (Skill Actives)
-        // 规则：仅扫描当前使用的 Skill/Item 的备注。
-        // ==================================================================
+        // ------------------------------------------------------------------
+        // 2.2 【模块 B】 技能主动机制 (Skill Actives)
+        //     规则：仅扫描当前使用的 Skill/Item 的备注。
+        // ------------------------------------------------------------------
         const note = item.note;
         
-        // --- B1. 状态交互 (对应原功能3, 7) ---
+        // --- B1. 状态交互 (State Interaction) ---
         // 格式：<状态交互: 状态ID, 公式, 是否移除, 范围>
-        // 逻辑：扫描指定范围的目标，如果带有状态ID，则执行公式。公式>0扣血，公式<0加血。
+        // 逻辑：扫描指定范围的目标，若有指定状态，则执行公式。
         const stateInteractMatches = note.matchAll(/<状态交互:(\d+),([^,]+),([^,]+),([^>]+)>/g);
         
         for (const match of stateInteractMatches) {
@@ -204,11 +221,11 @@
             // 确定作用范围
             let targets = [];
             if (range === 'target') {
-                targets = [target]; // 仅当前技能目标
+                targets = [target];             // 仅当前技能目标
             } else if (range === 'allallies') {
                 targets = $gameParty.members(); // 全体队友
             } else if (range === 'self') {
-                targets = [subject]; // 使用者自己
+                targets = [subject];            // 使用者自己
             }
 
             // 遍历范围内的每个单位
@@ -216,19 +233,19 @@
                 if (t.isAlive() && t.isStateAffected(stateId)) {
                     try {
                         const a = subject;
-                        const b = t; // b 总是指向当前被检查的单位
+                        const b = t; // b 指向当前被检查的单位
                         const v = $gameVariables._data;
                         
-                        // 计算数值
+                        // 计算数值 (正数伤，负数奶)
                         const val = Math.floor(eval(formula));
 
                         if (val > 0) { 
-                            // 正数：造成伤害
+                            // 造成伤害
                             t.gainHp(-val);
                             if (t.result().hpAffected) t.startDamagePopup();
                         } else if (val < 0) { 
-                            // 负数：造成治疗 (gainHp传入正数)
-                            t.gainHp(-val);
+                            // 造成治疗
+                            t.gainHp(-val); // gainHp传入正数
                             if (t.result().hpAffected) t.startDamagePopup();
                         }
 
@@ -243,7 +260,7 @@
             });
         }
 
-// --- B2. 力场共鸣 (对应原功能5, 6) ---
+        // --- B2. 力场共鸣 (Field Resonance) ---
         // 格式：<力场共鸣: 状态ID, 模式, 公式, 是否移除>
         // 模式：Spread(扩散), Gather(聚合)
         const fieldResMatches = note.matchAll(/<力场共鸣:(\d+),([^,]+),([^,]+),([^>]+)>/g);
@@ -260,7 +277,7 @@
 
             if (mode === 'spread') {
                 // [Spread模式]：引爆场上所有带状态的人
-                // 延迟执行，让当前攻击动画先播完
+                // 延迟200ms执行，让当前攻击动画先播完
                 setTimeout(() => {
                     affectedMembers.forEach(m => {
                         try {
@@ -272,13 +289,11 @@
                             if (val > 0) {
                                 m.gainHp(-val);
                                 
-                                // 【优化】显示伤害跳字
+                                // 显示伤害跳字与受击动作
                                 if (m.result().hpAffected) m.startDamagePopup();
-                                
-                                // 【优化】触发受击表现 (闪白 + 音效)
                                 m.performDamage(); 
 
-                                // 如果被炸死了，触发死亡效果
+                                // 死亡判定
                                 if (m.isDead()) m.performCollapse();
                             }
                         } catch(e) {
@@ -290,7 +305,7 @@
                     if (removeState) {
                         affectedMembers.forEach(m => m.removeState(stateId));
                     }
-                }, 200); // 200ms 延迟
+                }, 200);
 
             } else if (mode === 'gather') {
                 // [Gather模式]：根据场上带状态的人数(n)，集火当前目标
@@ -306,10 +321,8 @@
                         if (val > 0) {
                             target.gainHp(-val);
                             
-                            // 【优化】显示伤害跳字
+                            // 显示伤害与动作
                             if (target.result().hpAffected) target.startDamagePopup();
-                            
-                            // 【优化】触发受击表现 (闪白 + 音效)
                             target.performDamage();
                         }
                         
@@ -325,12 +338,11 @@
         }
 
 
-        // ==================================================================
-        // 【模块 C】 保留的高级机制 (Legacy Features)
-        // 规则：保持原版逻辑，写在技能备注中。
-        // ==================================================================
+        // ------------------------------------------------------------------
+        // 2.3 【模块 C】 保留的高级机制 (Legacy Features)
+        // ------------------------------------------------------------------
         
-        // --- C1. 状态循环 (原功能4) ---
+        // --- C1. 状态循环 (State Cycle) ---
         // 逻辑：如果有状态1就换成2，有2换成3...
         const stateCycleMatch = note.match(/<状态循环:([^>]+)>/);
         if (stateCycleMatch) {
@@ -347,17 +359,17 @@
                     target.removeState(stateIds[currentIndex]);
                     target.addState(stateIds[currentIndex + 1]);
                 }
-                // 如果是最后一个，什么都不做(保持原逻辑)
+                // 如果是最后一个，保持原逻辑什么都不做
             }
         }
 
-        // --- C2. 复杂流程处理 (反击/转移/弹射) ---
-        // 这些功能包含复杂的多段伤害或属性修改，封装在独立函数处理
+        // --- C2. 复杂流程处理 (Complex Features) ---
+        // 功能：反击、转移、弹射
         // 增加标记防止单次Action内多次重复执行
         if (!this._specialEffectsProcessed) {
             this._specialEffectsProcessed = true;
             
-            // 重置反击属性提升标记
+            // 重置反击属性提升标记 (防止下一轮重复叠加)
             if (subject) subject._counterAttackBuffApplied = false;
             
             // 执行处理函数
@@ -376,6 +388,9 @@
         
         // ==================================================================
         // 功能 8：累计反击 (Accumulated Counter)
+        // 逻辑分为两个阶段：
+        // 1. 开启阶段：如果身上没状态，加上状态，提升属性，开始积攒伤害。
+        // 2. 释放阶段：如果身上有状态，消耗掉状态和积攒的伤害值，造成反击伤害。
         // ==================================================================
         const counterMatch = note.match(/<累计反击:(\d+),([^,]+),([^,]+),([^>]+)>/);
         if (counterMatch) {
@@ -393,13 +408,14 @@
                     // 变量准备
                     const a = user;
                     const b = target;
-                    const d = accumulatedDamage; // 核心变量 d
+                    const d = accumulatedDamage; // 核心变量 d (积攒值)
                     const v = $gameVariables._data;
                     
                     const damage = Math.floor(eval(counterFormula));
                     
+                    // 造成反击伤害
                     if (damage > 0) {
-                        // 判断是全体还是单体
+                        // 判断技能范围
                         if (this.isForAll()) {
                             const targets = this.targetsForOpponents();
                             targets.forEach(t => {
@@ -436,7 +452,7 @@
                         const v = $gameVariables._data;
                         const value = Math.floor(eval(statValue));
                         
-                        // 映射属性ID
+                        // 映射属性ID到RMMZ内部索引
                         const paramMap = { 'def':3, 'mdef':5, 'atk':2, 'mat':4, 'agi':6, 'luk':7 };
                         
                         if(paramMap[statType]) {
@@ -452,6 +468,9 @@
 
         // ==================================================================
         // 功能 9：伤害转移 (Damage Transfer)
+        // 逻辑：
+        // 1. 如果已有该状态，再次使用则关闭转移（移除状态和标记）。
+        // 2. 如果没有该状态，则开启转移（添加状态，给全队注册标记）。
         // ==================================================================
         const dtMatch = note.match(/<伤害转移:(\d+),([\d\.]+)(?:,([^,>]+)(?:,([^>]+))?)?>/);
         if (dtMatch) {
@@ -482,6 +501,10 @@
 
         // ==================================================================
         // 功能 10：弹射伤害 (Ricochet Damage)
+        // 逻辑：
+        // 1. 对主目标造成初始伤害。
+        // 2. 构建弹射目标池（根据模式 Random 或 Order）。
+        // 3. 计算延迟，依次对后续目标造成伤害。
         // ==================================================================
         const ricochetMatch = note.match(/<弹射伤害:([^,]+),([^,]+),(\d+),(\d+),([^,]+),([^>]+)>/);
         if (ricochetMatch) {
@@ -505,7 +528,7 @@
                     target.performDamage();
                 }
 
-                // 2. 构建弹射池
+                // 2. 构建弹射池 (排除已死单位)
                 const allEnemies = $gameTroop.members().filter(e => !e.isDead());
                 let bouncePool = [];
                 
@@ -536,7 +559,7 @@
                     }
                 }
 
-                // 4. 计算延迟逻辑 (人越多延迟越短，最低30ms)
+                // 4. 计算延迟逻辑 (人越多延迟越短，最低30ms，营造连击感)
                 let stepDelay = 150;
                 if (targetsSequence.length > 3) {
                     stepDelay = Math.max(30, 150 - (targetsSequence.length - 3) * 20);
@@ -546,7 +569,7 @@
                 targetsSequence.forEach((enemy, index) => {
                      const realN = index + 1;
                      const delay = realN * stepDelay;
-                     // 伤害公式中的 n 受 m 限制
+                     // 伤害公式中的 n 受 m (倍率上限) 限制
                      const n = (damageCapM > 0) ? Math.min(realN, damageCapM) : realN;
                      
                      setTimeout(() => {
@@ -562,7 +585,7 @@
                              const originalHp = enemy.hp;
                              enemy.gainHp(-damage);
                              
-                             // 特殊处理：只显示数字，不显示战斗日志文本
+                             // 特殊处理：只显示数字，不显示战斗日志文本(防止刷屏)
                              enemy._ignoreDamageLog = true;
                              
                              // 构造临时result显示弹窗
@@ -584,8 +607,8 @@
     }
 
     // ======================================================================
-    // 挂钩：Game_Action.prototype.apply
-    // 作用：处理【受击后】的被动逻辑（累计反击积攒、伤害转移结算）
+    // 3. 挂钩：Game_Action.prototype.apply
+    //    作用：处理【受击后】的被动逻辑（累计反击积攒、伤害转移结算）
     // ======================================================================
     const _Game_Action_apply = Game_Action.prototype.apply;
     Game_Action.prototype.apply = function(target) {
@@ -605,9 +628,9 @@
                 _Sec_AccumulatedDamage.set(actorId, accumulated + damageValue);
 
                 // --- 逻辑 B：伤害转移的结算 (功能9) ---
+                // 检查当前受击者是否有转移标记
                 const transferInfo = _Sec_TransferMarker.get(actorId);
                 
-                // 如果当前受击者身上有转移标记
                 if (transferInfo) {
                     const markerActor = $gameActors.actor(transferInfo.markerId);
                     
@@ -619,7 +642,7 @@
                             const r = transferInfo.transferRate / 100;
                             const mhp = markerActor.mhp, def = markerActor.def, mdef = markerActor.mdf;
                             
-                            // 计算转移伤害 (守护者受到的伤害)
+                            // 计算转移伤害 (守护者应受到的伤害)
                             if (transferInfo.transferFormula) {
                                 transferDamage = Math.floor(eval(transferInfo.transferFormula));
                             } else {
@@ -628,7 +651,7 @@
                             }
                             transferDamage = Math.max(1, transferDamage);
 
-                            // 计算恢复量 (受击者回血量)
+                            // 计算恢复量 (受击者应回血量，抵消掉部分伤害)
                             if (transferInfo.recoverFormula) {
                                 recoverAmount = Math.floor(eval(transferInfo.recoverFormula));
                             } else {
@@ -670,12 +693,13 @@
     };
 
     // ======================================================================
-    // 挂钩：BattleManager.startAction
-    // 作用：每回合行动开始前，清理临时的日志忽略标记
+    // 4. 挂钩：BattleManager.startAction
+    //    作用：每回合行动开始前，清理临时的日志忽略标记
     // ======================================================================
     const _BattleManager_startAction = BattleManager.startAction;
     BattleManager.startAction = function() {
         const all = $gameParty.members().concat($gameTroop.members());
+        // 清理所有单位的临时标记
         all.forEach(b => {
             b._ignoreMpLog = undefined;
             b._ignoreDamageLog = undefined;
