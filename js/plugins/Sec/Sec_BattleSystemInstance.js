@@ -1,83 +1,248 @@
 /*:
  * @target MZ
- * @plugindesc [重构版v2.1] 战斗系统实例插件 - 职业被动与技能主动分离
+ * @plugindesc [重构版v2.6] 战斗系统实例插件 - 终极案例库版
  * @author Secmon (Refactored by Gemini)
- * @version 2.1.0
+ * @version 2.6.0
  *
  * @help
  * ============================================================================
- * ★ 新旧功能迁移与对照指南 ★
+ * ★ 插件功能与终极案例手册 v2.6 ★
  * ============================================================================
- * 本插件将原有的分散功能整合为“职业被动”和“技能主动”两大模块。
- * 请按照下表修改数据库中的备注配置。
+ * 本插件允许在【职业】、【敌人】或【技能】的备注栏中填写特定标签。
+ * 下文包含各个机制的详细参数说明及海量实战案例。
  *
+ * 【通用变量表】(所有公式均可用)
+ * a    : 动作使用者 (或 亡语中的死者 / 转移中的守护者)
+ * b    : 动作目标   (或 亡语中的凶手 / 转移中的被守护者)
+ * v[n] : 游戏变量 (例如 v[10])
+ * s[n] : 游戏开关 (例如 s[5])
+ * dmg  : 本次行动造成的实际伤害数值 (仅受击/吸血等逻辑可用)
+ *
+ * ============================================================================
+ * 一、被动触发模块 (Passives)
  * ----------------------------------------------------------------------------
- * 1. 普攻特效 (原功能1：普攻回蓝)
+ * 填写位置：
+ * - 角色：数据库 -> 职业 (Classes) -> 备注
+ * - 敌人：数据库 -> 敌人 (Enemies) -> 备注 (支持亡语)
  * ----------------------------------------------------------------------------
- * [旧版机制]：底层写死，所有角色普攻强制回10点MP。无法修改。
- * [新版机制]：【职业被动】。在数据库【职业】备注栏填写标签。
- * [迁移写法]：
+ *
+ * 1. 普攻特效 (Attack Effect)
+ * ----------------------------------------------------------------------------
+ * 格式：<战斗触发:Attack, 公式>
+ *
+ * [实战案例库]
+ * // 1.【魔剑士】普攻吸魔：每次普攻回复 10点 MP
  * <战斗触发:Attack, a.gainMp(10)>
- * [扩展用法]：
- * <战斗触发:Attack, a.gainTp(5)>      // 普攻获得5点TP
- * <战斗触发:Attack, a.gainHp(a.atk)>  // 普攻吸血(回复等同攻击力的血量)
+ *
+ * // 2.【狂战士】鲜血渴望：普攻扣自己50血，换取10点怒气(TP)
+ * <战斗触发:Attack, a.gainHp(-50); a.gainTp(10)>
+ *
+ * // 3.【赌徒】幸运一击：20%概率给敌人附加“眩晕”(状态5)
+ * <战斗触发:Attack, if(Math.random()<0.2) b.addState(5)>
+ *
+ * // 4.【盗贼】偷钱：普攻时获得 1~10 金币
+ * <战斗触发:Attack, $gameParty.gainGold(Math.floor(Math.random()*10)+1)>
  *
  * ----------------------------------------------------------------------------
- * 2. 受击特效 (原功能2：受击回蓝)
+ * 2. 受击特效 (Hit Effect)
  * ----------------------------------------------------------------------------
- * [旧版机制]：底层写死，所有角色受击强制回5点MP。无法修改。
- * [新版机制]：【职业被动】。在数据库【职业】备注栏填写标签。
- * [迁移写法]：
- * <战斗触发:Hit, a.gainMp(5)>
- * [扩展用法]：
- * <战斗触发:Hit, v[1]+=1>             // 受击时让1号变量+1
- * <战斗触发:Hit, a.gainTp(10)>        // 受击获得10点TP(怒气模式)
+ * 格式：<战斗触发:Hit, 公式>
+ *
+ * [实战案例库]
+ * // 1.【战士】坚韧：受到伤害获得 5点 TP
+ * <战斗触发:Hit, a.gainTp(5)>
+ *
+ * // 2.【重甲卫士】应激防御：受到伤害时，给自己附加“防御提升”(状态30)
+ * <战斗触发:Hit, a.addState(30)>
+ *
+ * // 3.【荆棘怪】反伤甲：受到伤害时，反弹 30% 的真实伤害给攻击者
+ * <战斗触发:Hit, b.gainHp(-dmg * 0.3); b.startDamagePopup()>
+ *
+ * // 4.【幻术师】闪避本能：若受到超过500点伤害，获得“分身”(状态40，提升闪避率)
+ * <战斗触发:Hit, if(dmg > 500) a.addState(40)>
  *
  * ----------------------------------------------------------------------------
- * 3. 状态交互 (原功能3：状态伤害 & 原功能7：Buff治疗)
+ * 3. 亡语机制 (Death Rattle)
  * ----------------------------------------------------------------------------
- * [旧版机制]：伤害和治疗分开写，标签不同。
- * 伤害：<状态伤害:5, a.atk*2, true>
- * 治疗：<Buff治疗:30, a.mat*2, true, all>
- * [新版机制]：【技能主动】。统一为一个标签，正数为伤，负数为奶。
- * [标签格式]：<状态交互: 状态ID, 公式, 是否移除, 目标范围>
- * 范围可选：Target(当前目标), Self(使用者自身), AllAllies(全体队友)
- * [迁移写法]：
- * 原伤害：<状态交互:5, a.atk*2, true, Target>
- * 原治疗：<状态交互:30, -(a.mat*2), true, AllAllies>  (注意公式前的负号)
+ * 格式：<战斗触发:Dead, 公式>
  *
- * ----------------------------------------------------------------------------
- * 4. 力场共鸣 (原功能5：持续伤害/扩散 & 原功能6：终结伤害/聚合)
- * ----------------------------------------------------------------------------
- * [旧版机制]：扩散伤害和根据数量终结分开写。
- * 扩散：<持续伤害:20, a.mat*2>
- * 终结：<终结伤害:21, a.atk*n, true>
- * [新版机制]：【技能主动】。统一为一个标签，通过模式区分。
- * [标签格式]：<力场共鸣: 状态ID, 模式, 公式, 是否移除>
- * 模式可选：Spread(扩散/炸全场), Gather(聚合/打单体)
- * [迁移写法]：
- * 原扩散：<力场共鸣:20, Spread, a.mat*2, false>
- * 原终结：<力场共鸣:21, Gather, a.atk*n, true>
+ * [实战案例库]
+ * // 1.【自爆怪】烈焰殉爆：对凶手造成 1000 点固定伤害
+ * <战斗触发:Dead, b.gainHp(-1000); b.startDamagePopup()>
  *
- * ----------------------------------------------------------------------------
- * 5. 其他高级功能 (完全兼容旧版，无需修改)
- * ----------------------------------------------------------------------------
- * 以下功能标签保持原样，直接写在【技能】备注中：
- * - 功能4：<状态循环:ID1, ID2, ID3...>
- * - 功能8：<累计反击:状态ID, 属性类型, 属性值, 反击公式>
- * - 功能9：<伤害转移:状态ID, 比例...>
- * - 功能10：<弹射伤害:初始公式, 弹射公式, 次数...>
+ * // 2.【剧毒史莱姆】临死喷溅：让凶手陷入“剧毒”(状态10)
+ * <战斗触发:Dead, b.addState(10)>
+ *
+ * // 3.【圣职者】神圣遗志：死后复活所有队友并回满血 (仅作示例，逻辑需严谨)
+ * <战斗触发:Dead, $gameParty.deadMembers().forEach(m => { m.revive(); m.gainHp(9999); })>
+ *
+ * // 4.【赏金首领】巨额赏金：击杀者获得 5000 金币
+ * <战斗触发:Dead, $gameParty.gainGold(5000)>
+ *
  *
  * ============================================================================
- * ★ 参数变量说明 ★
+ * 二、技能主动模块 (Active Skills)
+ * ----------------------------------------------------------------------------
+ * 填写位置：数据库 -> 技能 (Skills) -> 备注
+ * ----------------------------------------------------------------------------
+ *
+ * 1. 溅射伤害 (Splash Damage)
+ * ----------------------------------------------------------------------------
+ * 格式：<溅射伤害: 比例, 范围>
+ * 参数：[比例 0.0-1.0], [范围 整数]
+ *
+ * [实战案例库]
+ * // 1.【横扫】顺劈斩：对主目标左右各 1 个单位造成 50% 溅射伤害
+ * <溅射伤害: 0.5, 1>
+ *
+ * // 2.【冲击波】直线贯通：对主目标左右各 2 个单位造成 80% 溅射伤害 (宽范围)
+ * <溅射伤害: 0.8, 2>
+ *
+ * // 3.【微风】轻微波及：对左右各 1 个单位造成 10% 的“刮蹭”伤害
+ * <溅射伤害: 0.1, 1>
+ *
+ * ----------------------------------------------------------------------------
+ * 2. 斩杀追击 (Execution)
+ * ----------------------------------------------------------------------------
+ * 格式：<斩杀追击: 阈值%, 公式>
+ * 参数：[阈值 1-100], [伤害公式]
+ *
+ * [实战案例库]
+ * // 1.【刺客】处决：若目标血量低于 30%，追加 2000 点真实伤害
+ * <斩杀追击: 30, 2000>
+ *
+ * // 2.【死神】灵魂收割：若目标血量低于 10%，直接斩杀 (造成等于当前血量的伤害)
+ * <斩杀追击: 10, b.hp>
+ *
+ * // 3.【猎人】弱点补刀：若目标血量低于 50%，追加 2倍攻击力 的伤害
+ * <斩杀追击: 50, a.atk * 2>
+ *
+ * ----------------------------------------------------------------------------
+ * 3. 技能吸血 (Vampirism)
+ * ----------------------------------------------------------------------------
+ * 格式：<技能吸血: 比例>
+ * 参数：[比例 0.0-1.0]
+ *
+ * [实战案例库]
+ * // 1.【吸血鬼】吸血之触：回复伤害值 30% 的血量
+ * <技能吸血: 0.3>
+ *
+ * // 2.【黑暗骑士】生命吞噬：造成多少伤害就回多少血 (100%吸血)
+ * <技能吸血: 1.0>
+ *
+ * // 3.【圣骑士】微量回覆：带有少量吸血效果(5%)的神圣打击
+ * <技能吸血: 0.05>
+ *
+ * ----------------------------------------------------------------------------
+ * 4. 状态交互 (State Interaction)
+ * ----------------------------------------------------------------------------
+ * 格式：<状态交互: 状态ID, 公式, 移除?, 范围>
+ * 范围：Target, Self, AllAllies
+ * 公式：正数伤，负数奶
+ *
+ * [实战案例库]
+ * // 1.【法师】冰火引爆：若目标有“冻结”(状态15)，造成 3倍魔攻伤害并移除冻结
+ * <状态交互: 15, a.mat * 3, true, Target>
+ *
+ * // 2.【牧师】净化术：若队友有“中毒”(状态10)，移除它，并回复 500 血
+ * <状态交互: 10, -500, true, AllAllies>
+ *
+ * // 3.【恶魔】吞噬力量：若自己有“力量祝福”(状态20)，移除它，回复 1000 血
+ * <状态交互: 20, -1000, true, Self>
+ *
+ * // 4.【死灵】疫病加重：若目标有“瘟疫”(状态30)，不移除，再造成 500 伤害
+ * <状态交互: 30, 500, false, Target>
+ *
+ * ----------------------------------------------------------------------------
+ * 5. 力场共鸣 (Field Resonance)
+ * ----------------------------------------------------------------------------
+ * 格式：<力场共鸣: 状态ID, 模式, 公式, 移除?>
+ * 模式：Spread(炸全场), Gather(聚合并炸单体,可用变量n)
+ *
+ * [实战案例库]
+ * // 1.【术士】连环尸爆 (Spread)：
+ * // 引爆全场所有带有“尸体标记”(状态50)的单位，造成魔攻2倍伤害，移除标记
+ * <力场共鸣: 50, Spread, a.mat * 2, true>
+ *
+ * // 2.【贤者】光之聚合 (Gather)：
+ * // 统计全场带有“光之印记”(状态60)的人数n，对BOSS造成 n * 2000 伤害
+ * <力场共鸣: 60, Gather, n * 2000, true>
+ *
+ * // 3.【辅助】共鸣治疗 (Spread)：
+ * // 让全场带有“回春”(状态70)的单位瞬间回复 1000 血 (公式写负数)
+ * <力场共鸣: 70, Spread, -1000, false>
+ *
+ *
  * ============================================================================
- * 在所有公式中，您可以使用以下变量：
- * a   : 动作使用者 (在受击触发中指代受击者自己)
- * b   : 动作目标   (在受击触发中指代攻击来源)
- * v   : 游戏变量数组 (例如 v[1] 代表变量1)
- * s   : 游戏开关数组 (例如 s[1] 代表开关1)
- * dmg : 本次行动造成的实际伤害值 (仅在触发器中可用)
- * n   : 场上拥有指定状态的人数 (仅在力场共鸣Gather模式可用)
+ * 三、高级机制模块 (Advanced)
+ * ----------------------------------------------------------------------------
+ * 填写位置：数据库 -> 技能 (Skills) -> 备注
+ * ----------------------------------------------------------------------------
+ *
+ * 1. 伤害转移 (Damage Transfer)
+ * ----------------------------------------------------------------------------
+ * 格式：<伤害转移: 状态ID, 分摊比例%, 转移公式, 恢复公式>
+ * 变量 d: 原始伤害值
+ *
+ * [实战案例库]
+ * // 1.【守护骑士】完全援护：
+ * // 队友受到的伤害100%被拦截。骑士防御高，只受 50% 伤害。队友完全不扣血。
+ * // 状态ID: 100
+ * <伤害转移: 100, 100, d * 0.5, d>
+ *
+ * // 2.【灵魂锁链】痛苦分担：
+ * // 队友受到的伤害，50%转移给施法者。两人各承受一半。
+ * // 状态ID: 101
+ * <伤害转移: 101, 50> 
+ * (注：省略公式则默认按比例扣除守护者血量，并让队友回血抵消该比例)
+ *
+ * // 3.【狂信徒】牺牲祝福：
+ * // 队友受伤时，狂信徒承受 100% 伤害。队友反而回复 伤害值x1.5 的血量(过量治疗)。
+ * // 状态ID: 102
+ * <伤害转移: 102, 100, d, d * 1.5>
+ *
+ * ----------------------------------------------------------------------------
+ * 2. 累计反击 (Accumulated Counter)
+ * ----------------------------------------------------------------------------
+ * 格式：<累计反击: 状态ID, 属性, 值, 反击公式>
+ * 变量 d: 蓄力期间累计伤害
+ *
+ * [实战案例库]
+ * // 1.【盾卫】盾牌反击：
+ * // 开启姿态(状态110)：防御力(def) + 200。
+ * // 再次释放：造成 (累计受到伤害 * 3) 的反击伤害。
+ * <累计反击: 110, def, 200, d * 3>
+ *
+ * // 2.【剑圣】冥想蓄力：
+ * // 开启姿态(状态111)：攻击力(atk) + 50。
+ * // 再次释放：与受到的伤害无关，造成 (a.atk * 10) 的拔刀斩伤害。
+ * <累计反击: 111, atk, 50, a.atk * 10>
+ *
+ * // 3.【武僧】忍耐：
+ * // 开启姿态(状态112)：血上限(hp) + 1000 (临时撑血)。
+ * // 再次释放：将受到的痛苦转化为 (d * 5) 的真实伤害打回去。
+ * <累计反击: 112, hp, 1000, d * 5>
+ *
+ * ----------------------------------------------------------------------------
+ * 3. 弹射伤害 (Ricochet)
+ * ----------------------------------------------------------------------------
+ * 格式：<弹射伤害: 初始公式, 弹射公式, 次数, 倍率上限, 允许重复?, 模式>
+ * 变量 damage: 上一次伤害 / n: 当前第几次
+ *
+ * [实战案例库]
+ * // 1.【雷电法师】闪电链 (经典)：
+ * // 首发3000伤害。弹射3次。每次伤害衰减20% (damage*0.8)。随机目标。
+ * <弹射伤害: 3000, damage * 0.8, 3, 0, false, Random>
+ *
+ * // 2.【猎手】回旋镖 (顺序)：
+ * // 首发物攻2倍。弹射4次。伤害不衰减。按敌人站位顺序依次打击。
+ * <弹射伤害: a.atk*2, damage, 4, 0, false, Order>
+ *
+ * // 3.【混沌法师】混乱法球 (递增)：
+ * // 首发500。弹射5次。每次伤害增加500 (damage+500)。允许重复打同一个人(true)。
+ * <弹射伤害: 500, damage + 500, 5, 0, true, Random>
+ *
+ * ============================================================================
  */
 
 (() => {
@@ -87,27 +252,12 @@
 
     // ======================================================================
     // 1. 全局数据存储
-    //    用于跨回合或跨行动存储战斗状态
     // ======================================================================
-
-    /**
-     * 存储每个角色的累计受到伤害值。
-     * Key: ActorID (负数表示EnemyID), Value: 累计伤害数值
-     * 用途：功能8 (累计反击)
-     */
     const _Sec_AccumulatedDamage = new Map();
-
-    /**
-     * 存储伤害转移的标记信息。
-     * Key: 受击者ActorID, Value: { markerId: 承担者ID, transferRate: 比例, ... }
-     * 用途：功能9 (伤害转移)
-     */
     const _Sec_TransferMarker = new Map();
-
 
     // ======================================================================
     // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage
-    //    作用：在伤害结算时切入，处理所有主动和被动效果
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
@@ -115,310 +265,276 @@
         // ------------------------------------------------------------------
         // 2.0 执行原版逻辑
         // ------------------------------------------------------------------
-        // 先让伤害生效，保证 actualDamage 是准确的最终伤害
         _Game_Action_executeDamage.call(this, target, value);
 
-        // 获取上下文信息
-        const subject = this.subject();                // 动作使用者
-        const item = this.item();                      // 使用的技能/物品对象
-        const actualDamage = target.result().hpDamage; // 获取实际造成的HP伤害
+        const subject = this.subject();
+        const item = this.item();
+        const actualDamage = target.result().hpDamage; // 核心：获取实际伤害
 
         // ------------------------------------------------------------------
-        // 2.1 【模块 A】 职业被动机制 (Class Passives)
-        //     规则：仅扫描 Actor 所属 Class 的备注。
+        // 2.1 【模块 A】 被动机制 (Passives)
         // ------------------------------------------------------------------
         
-        // --- A1. 普攻特效 (Attack Effects) ---
-        // 触发条件：使用者是角色 && 动作是普攻
+        // --- A1. 普攻特效 (仅角色) ---
         if (subject && subject.isActor() && this.isAttack()) {
             const classData = subject.currentClass();
-            
             if (classData && classData.note) {
-                // 正则匹配：<战斗触发:Attack, 公式>
                 const matches = classData.note.matchAll(/<战斗触发:Attack,([^>]+)>/gi);
-                
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        // 上下文变量准备
-                        const a = subject; // a: 攻击者(自己)
-                        const b = target;  // b: 被攻击者
-                        const v = $gameVariables._data;
-                        const s = $gameSwitches._data;
+                        const a = subject, b = target, v = $gameVariables._data, s = $gameSwitches._data;
                         const dmg = actualDamage;
-                        
-                        // 细节优化：防止 gainMp 刷屏日志
                         if (formula.includes('gainMp')) subject._ignoreMpLog = true;
-                        
-                        // 执行公式
                         eval(formula);
-                        
-                        // 恢复日志显示
                         subject._ignoreMpLog = false;
-                    } catch (e) {
-                        console.error(`[Sec] 职业被动(Attack)执行错误: 职业ID=${classData.id}`, e);
-                    }
+                    } catch (e) { console.error(`[Sec] A1 Error`, e); }
                 }
             }
         }
 
-        // --- A2. 受击特效 (Hit Effects) ---
-        // 触发条件：目标是角色 && (命中 || 造成伤害)
+        // --- A2. 受击特效 (仅角色) ---
         if (target && target.isActor()) {
             const result = target.result();
             if (result.isHit() || actualDamage > 0) {
                 const classData = target.currentClass();
-                
                 if (classData && classData.note) {
-                    // 正则匹配：<战斗触发:Hit, 公式>
                     const matches = classData.note.matchAll(/<战斗触发:Hit,([^>]+)>/gi);
-                    
                     for (const match of matches) {
                         const formula = match[1].trim();
                         try {
-                            // 上下文变量准备
-                            const a = target;  // 【注意】a: 受击者(自己)
-                            const b = subject; // b: 攻击来源
-                            const v = $gameVariables._data;
-                            const s = $gameSwitches._data;
+                            const a = target, b = subject, v = $gameVariables._data, s = $gameSwitches._data;
                             const dmg = actualDamage;
-
-                            // 细节优化：防止 gainMp 刷屏日志
                             if (formula.includes('gainMp')) target._ignoreMpLog = true;
-                            
                             eval(formula);
-                            
                             target._ignoreMpLog = false;
-                        } catch (e) {
-                            console.error(`[Sec] 职业被动(Hit)执行错误: 职业ID=${classData.id}`, e);
-                        }
+                        } catch (e) { console.error(`[Sec] A2 Error`, e); }
                     }
                 }
             }
         }
 
-        // 如果没有物品数据(极少情况)，后续不再执行
-        if (!item) return;
+        // --- A3. 亡语 (Death Effects) ---
+        if (target && target.isDead()) {
+             let noteData = "";
+             
+             if (target.isActor()) {
+                 const classData = target.currentClass();
+                 if (classData) noteData = classData.note;
+             } else if (target.isEnemy()) {
+                 const enemyData = target.enemy();
+                 if (enemyData) noteData = enemyData.note;
+             }
 
+             if (noteData) {
+                const matches = noteData.matchAll(/<战斗触发:Dead,([^>]+)>/gi);
+                for (const match of matches) {
+                    const formula = match[1].trim();
+                    try {
+                        const a = target; // 死者
+                        const b = subject; // 凶手
+                        const v = $gameVariables._data;
+                        const s = $gameSwitches._data;
+                        eval(formula);
+                    } catch (e) { 
+                        console.error(`[Sec] A3(亡语) 执行错误`, e); 
+                    }
+                }
+             }
+        }
+
+        if (!item) return;
 
         // ------------------------------------------------------------------
         // 2.2 【模块 B】 技能主动机制 (Skill Actives)
-        //     规则：仅扫描当前使用的 Skill/Item 的备注。
         // ------------------------------------------------------------------
         const note = item.note;
         
-        // --- B1. 状态交互 (State Interaction) ---
-        // 格式：<状态交互: 状态ID, 公式, 是否移除, 范围>
-        // 逻辑：扫描指定范围的目标，若有指定状态，则执行公式。
+        // --- B1. 状态交互 ---
         const stateInteractMatches = note.matchAll(/<状态交互:(\d+),([^,]+),([^,]+),([^>]+)>/g);
-        
         for (const match of stateInteractMatches) {
             const stateId = parseInt(match[1]);
             const formula = match[2].trim();
             const removeState = match[3].trim().toLowerCase() === 'true';
             const range = match[4].trim().toLowerCase();
 
-            // 确定作用范围
             let targets = [];
-            if (range === 'target') {
-                targets = [target];             // 仅当前技能目标
-            } else if (range === 'allallies') {
-                targets = $gameParty.members(); // 全体队友
-            } else if (range === 'self') {
-                targets = [subject];            // 使用者自己
-            }
+            if (range === 'target') targets = [target];
+            else if (range === 'allallies') targets = $gameParty.members();
+            else if (range === 'self') targets = [subject];
 
-            // 遍历范围内的每个单位
             targets.forEach(t => {
                 if (t.isAlive() && t.isStateAffected(stateId)) {
                     try {
-                        const a = subject;
-                        const b = t; // b 指向当前被检查的单位
-                        const v = $gameVariables._data;
-                        
-                        // 计算数值 (正数伤，负数奶)
+                        const a = subject, b = t, v = $gameVariables._data;
                         const val = Math.floor(eval(formula));
-
                         if (val > 0) { 
-                            // 造成伤害
                             t.gainHp(-val);
                             if (t.result().hpAffected) t.startDamagePopup();
                         } else if (val < 0) { 
-                            // 造成治疗
-                            t.gainHp(-val); // gainHp传入正数
+                            t.gainHp(-val); 
                             if (t.result().hpAffected) t.startDamagePopup();
                         }
-
-                        // 处理状态移除
-                        if (removeState) {
-                            t.removeState(stateId);
-                        }
-                    } catch (e) { 
-                        console.error(`[Sec] 状态交互计算错误: 状态ID=${stateId}`, e); 
-                    }
+                        if (removeState) t.removeState(stateId);
+                    } catch (e) { console.error(`[Sec] B1 Error`, e); }
                 }
             });
         }
 
-        // --- B2. 力场共鸣 (Field Resonance) ---
-        // 格式：<力场共鸣: 状态ID, 模式, 公式, 是否移除>
-        // 模式：Spread(扩散), Gather(聚合)
+        // --- B2. 力场共鸣 ---
         const fieldResMatches = note.matchAll(/<力场共鸣:(\d+),([^,]+),([^,]+),([^>]+)>/g);
-        
         for (const match of fieldResMatches) {
             const stateId = parseInt(match[1]);
             const mode = match[2].trim().toLowerCase();
             const formula = match[3].trim();
             const removeState = match[4].trim().toLowerCase() === 'true';
 
-            // 扫描全场（队友+敌人）所有存活且带有该状态的单位
             const allBattlers = $gameParty.members().concat($gameTroop.members());
             const affectedMembers = allBattlers.filter(m => m.isAlive() && m.isStateAffected(stateId));
 
             if (mode === 'spread') {
-                // [Spread模式]：引爆场上所有带状态的人
-                // 延迟200ms执行，让当前攻击动画先播完
                 setTimeout(() => {
                     affectedMembers.forEach(m => {
                         try {
-                            const a = subject;
-                            const b = m; // b 是当前被引爆的单位
-                            const v = $gameVariables._data;
-                            
+                            const a = subject, b = m, v = $gameVariables._data;
                             const val = Math.floor(eval(formula));
                             if (val > 0) {
                                 m.gainHp(-val);
-                                
-                                // 显示伤害跳字与受击动作
                                 if (m.result().hpAffected) m.startDamagePopup();
                                 m.performDamage(); 
-
-                                // 死亡判定
                                 if (m.isDead()) m.performCollapse();
                             }
-                        } catch(e) {
-                            console.error(`[Sec] 力场共鸣(Spread)错误`, e);
-                        }
+                        } catch(e) {}
                     });
-                    
-                    // 统一移除状态
-                    if (removeState) {
-                        affectedMembers.forEach(m => m.removeState(stateId));
-                    }
+                    if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
                 }, 200);
-
             } else if (mode === 'gather') {
-                // [Gather模式]：根据场上带状态的人数(n)，集火当前目标
-                const n = affectedMembers.length; // 核心变量 n
-                
+                const n = affectedMembers.length;
                 if (n > 0) {
                     try {
-                        const a = subject;
-                        const b = target; // b 是当前技能目标
-                        const v = $gameVariables._data;
-                        
+                        const a = subject, b = target, v = $gameVariables._data;
                         const val = Math.floor(eval(formula));
                         if (val > 0) {
                             target.gainHp(-val);
-                            
-                            // 显示伤害与动作
                             if (target.result().hpAffected) target.startDamagePopup();
                             target.performDamage();
                         }
-                        
-                        // 移除全场所有人的该状态
-                        if (removeState) {
-                            affectedMembers.forEach(m => m.removeState(stateId));
-                        }
-                    } catch(e) {
-                        console.error(`[Sec] 力场共鸣(Gather)错误`, e);
-                    }
+                        if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
+                    } catch(e) {}
                 }
+            }
+        }
+
+        // --- B3. 溅射伤害 ---
+        const splashMatch = note.match(/<溅射伤害:([\d\.]+),(\d+)>/);
+        if (splashMatch && actualDamage > 0) {
+            const rate = parseFloat(splashMatch[1]);
+            const range = parseInt(splashMatch[2]);
+            const friends = target.friendsUnit(); 
+            const centerIndex = target.index();
+            
+            const neighbors = friends.members().filter(member => {
+                const idx = member.index();
+                return member !== target && 
+                       member.isAlive() && 
+                       Math.abs(idx - centerIndex) <= range;
+            });
+            
+            neighbors.forEach(n => {
+                const splashDmg = Math.floor(actualDamage * rate);
+                if (splashDmg > 0) {
+                    n.gainHp(-splashDmg);
+                    n.startDamagePopup(); 
+                    if (n.isDead()) n.performCollapse();
+                }
+            });
+        }
+
+        // --- B4. 斩杀追击 ---
+        const execMatch = note.match(/<斩杀追击:(\d+),([^>]+)>/);
+        if (execMatch) {
+            const threshold = parseInt(execMatch[1]) / 100;
+            const formula = execMatch[2].trim();
+            
+            if (target.hpRate() < threshold && target.isAlive()) {
+                try {
+                    const a = subject, b = target, v = $gameVariables._data, dmg = actualDamage;
+                    const bonusDmg = Math.floor(eval(formula));
+                    
+                    if (bonusDmg > 0) {
+                        setTimeout(() => {
+                            target.gainHp(-bonusDmg);
+                            target.startDamagePopup();
+                            if (target.isDead()) target.performCollapse();
+                        }, 100);
+                    }
+                } catch(e) { console.error("[Sec] 斩杀计算错误", e); }
+            }
+        }
+
+        // --- B5. 技能吸血 ---
+        const drainMatch = note.match(/<技能吸血:([\d\.]+)>/);
+        if (drainMatch && actualDamage > 0) {
+            const rate = parseFloat(drainMatch[1]);
+            const healAmount = Math.floor(actualDamage * rate);
+            
+            if (healAmount > 0 && subject.isAlive()) {
+                subject.gainHp(healAmount);
+                subject.startDamagePopup();
             }
         }
 
 
         // ------------------------------------------------------------------
-        // 2.3 【模块 C】 保留的高级机制 (Legacy Features)
+        // 2.3 【模块 C】 高级与遗留机制
         // ------------------------------------------------------------------
         
-        // --- C1. 状态循环 (State Cycle) ---
-        // 逻辑：如果有状态1就换成2，有2换成3...
+        // --- C1. 状态循环 ---
         const stateCycleMatch = note.match(/<状态循环:([^>]+)>/);
         if (stateCycleMatch) {
             const stateIds = stateCycleMatch[1].split(',').map(id => parseInt(id.trim()));
             if (stateIds.length >= 2) {
-                // 查找当前拥有的状态索引
                 let currentIndex = stateIds.findIndex(id => target.isStateAffected(id));
-                
                 if (currentIndex === -1) {
-                    // 一个都没有，加第一个
                     target.addState(stateIds[0]);
                 } else if (currentIndex < stateIds.length - 1) {
-                    // 有中间的，移除当前，加下一个
                     target.removeState(stateIds[currentIndex]);
                     target.addState(stateIds[currentIndex + 1]);
                 }
-                // 如果是最后一个，保持原逻辑什么都不做
             }
         }
 
-        // --- C2. 复杂流程处理 (Complex Features) ---
-        // 功能：反击、转移、弹射
-        // 增加标记防止单次Action内多次重复执行
+        // --- C2. 复杂流程 (反击/转移/弹射) ---
         if (!this._specialEffectsProcessed) {
             this._specialEffectsProcessed = true;
-            
-            // 重置反击属性提升标记 (防止下一轮重复叠加)
             if (subject) subject._counterAttackBuffApplied = false;
-            
-            // 执行处理函数
             processComplexFeatures.call(this, subject, target, note);
         }
     };
 
 
     /**
-     * 处理复杂的遗留功能 (功能8, 9, 10)
-     * @param {Game_Battler} user - 使用者
-     * @param {Game_Battler} target - 目标
-     * @param {string} note - 技能备注
+     * 处理复杂的遗留功能
      */
     function processComplexFeatures(user, target, note) {
-        
-        // ==================================================================
-        // 功能 8：累计反击 (Accumulated Counter)
-        // 逻辑分为两个阶段：
-        // 1. 开启阶段：如果身上没状态，加上状态，提升属性，开始积攒伤害。
-        // 2. 释放阶段：如果身上有状态，消耗掉状态和积攒的伤害值，造成反击伤害。
-        // ==================================================================
+        // 功能 8：累计反击
         const counterMatch = note.match(/<累计反击:(\d+),([^,]+),([^,]+),([^>]+)>/);
         if (counterMatch) {
             const stateId = parseInt(counterMatch[1]);
-            const statType = counterMatch[2].trim().toLowerCase(); // def, atk, etc.
+            const statType = counterMatch[2].trim().toLowerCase();
             const statValue = counterMatch[3].trim();
             const counterFormula = counterMatch[4].trim();
 
             if (user.isStateAffected(stateId)) {
-                // 【阶段2：释放反击】
                 try {
                     const actorId = user.isActor() ? user.actorId() : -user.enemyId();
                     const accumulatedDamage = _Sec_AccumulatedDamage.get(actorId) || 0;
-                    
-                    // 变量准备
-                    const a = user;
-                    const b = target;
-                    const d = accumulatedDamage; // 核心变量 d (积攒值)
-                    const v = $gameVariables._data;
-                    
+                    const a = user, b = target, d = accumulatedDamage, v = $gameVariables._data;
                     const damage = Math.floor(eval(counterFormula));
                     
-                    // 造成反击伤害
                     if (damage > 0) {
-                        // 判断技能范围
                         if (this.isForAll()) {
-                            const targets = this.targetsForOpponents();
-                            targets.forEach(t => {
+                            this.targetsForOpponents().forEach(t => {
                                 t.gainHp(-damage);
                                 if (t.result().hpAffected) t.startDamagePopup();
                                 if (t.isDead() && BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', t);
@@ -429,65 +545,39 @@
                             if (target.isDead() && BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', target);
                         }
                     }
-                    
-                    // 释放后清理状态和数据
                     user.removeState(stateId);
                     user._counterAttackBuffApplied = false;
                     _Sec_AccumulatedDamage.set(actorId, 0);
-                    
                 } catch(e) { console.error("[Sec] 累计反击释放错误", e); }
             } else {
-                // 【阶段1：开启蓄力】
                  if (!user._counterAttackBuffApplied) {
                     user.addState(stateId);
                     user._counterAttackBuffApplied = true;
-                    
-                    // 初始化累计伤害池
                     const actorId = user.isActor() ? user.actorId() : -user.enemyId();
                     _Sec_AccumulatedDamage.set(actorId, 0);
-                    
-                    // 应用临时的属性提升
                     try {
-                        const a = user;
-                        const v = $gameVariables._data;
+                        const a = user, v = $gameVariables._data;
                         const value = Math.floor(eval(statValue));
-                        
-                        // 映射属性ID到RMMZ内部索引
                         const paramMap = { 'def':3, 'mdef':5, 'atk':2, 'mat':4, 'agi':6, 'luk':7 };
-                        
-                        if(paramMap[statType]) {
-                            user._paramPlus[paramMap[statType]] += value;
-                        } else if(statType === 'hp') {
-                            user.gainHp(value);
-                        }
+                        if(paramMap[statType]) user._paramPlus[paramMap[statType]] += value;
+                        else if(statType === 'hp') user.gainHp(value);
                         user.refresh();
-                    } catch(e){ console.error("[Sec] 累计反击属性提升错误", e); }
+                    } catch(e){}
                 }
             }
         }
 
-        // ==================================================================
-        // 功能 9：伤害转移 (Damage Transfer)
-        // 逻辑：
-        // 1. 如果已有该状态，再次使用则关闭转移（移除状态和标记）。
-        // 2. 如果没有该状态，则开启转移（添加状态，给全队注册标记）。
-        // ==================================================================
+        // 功能 9：伤害转移
         const dtMatch = note.match(/<伤害转移:(\d+),([\d\.]+)(?:,([^,>]+)(?:,([^>]+))?)?>/);
         if (dtMatch) {
              const stateId = parseInt(dtMatch[1]);
              const rate = parseFloat(dtMatch[2]);
-             
-             // 如果已有状态 -> 关闭转移
              if (user.isStateAffected(stateId)) {
                  user.removeState(stateId);
-                 // 清除全队的标记
                  $gameParty.members().forEach(m => _Sec_TransferMarker.delete(m.actorId()));
              } else {
-                 // 如果没有状态 -> 开启转移
                  user.addState(stateId);
                  const userId = user.isActor() ? user.actorId() : -user.enemyId();
-                 
-                 // 给全队打上标记：受伤时找userId分摊
                  $gameParty.members().forEach(m => {
                      _Sec_TransferMarker.set(m.actorId(), {
                          markerId: userId,
@@ -499,13 +589,7 @@
              }
         }
 
-        // ==================================================================
-        // 功能 10：弹射伤害 (Ricochet Damage)
-        // 逻辑：
-        // 1. 对主目标造成初始伤害。
-        // 2. 构建弹射目标池（根据模式 Random 或 Order）。
-        // 3. 计算延迟，依次对后续目标造成伤害。
-        // ==================================================================
+        // 功能 10：弹射伤害
         const ricochetMatch = note.match(/<弹射伤害:([^,]+),([^,]+),(\d+),(\d+),([^,]+),([^>]+)>/);
         if (ricochetMatch) {
             const initFormula = ricochetMatch[1];
@@ -513,13 +597,11 @@
             const maxBounces = parseInt(ricochetMatch[3]);
             const damageCapM = parseInt(ricochetMatch[4]);
             let allowRepeat = ricochetMatch[5].trim().toLowerCase() === 'true';
-            const mode = ricochetMatch[6].trim().toLowerCase(); // order 或 random
+            const mode = ricochetMatch[6].trim().toLowerCase();
             
-            // 随机模式强制允许重复
             if (mode === 'random') allowRepeat = true;
 
             try {
-                // 1. 造成初始伤害
                 const a = user, b = target, v = $gameVariables._data;
                 const initDmg = Math.floor(eval(initFormula));
                 if(initDmg > 0) {
@@ -528,113 +610,75 @@
                     target.performDamage();
                 }
 
-                // 2. 构建弹射池 (排除已死单位)
                 const allEnemies = $gameTroop.members().filter(e => !e.isDead());
                 let bouncePool = [];
-                
-                if (mode === 'random') {
-                    bouncePool = allEnemies; 
-                } else {
-                    // order模式：排除初始目标，按索引排序
+                if (mode === 'random') bouncePool = allEnemies; 
+                else {
                     bouncePool = allEnemies.filter(e => e !== target);
                     bouncePool.sort((a, b) => a.index() - b.index());
                 }
 
-                // 3. 构建弹射目标队列
                 let targetsSequence = [];
                 if (bouncePool.length > 0) {
                      if (mode === 'random') {
-                        for (let i = 0; i < maxBounces; i++) {
-                            // 随机抽取
-                            targetsSequence.push(bouncePool[Math.floor(Math.random() * bouncePool.length)]);
-                        }
+                        for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[Math.floor(Math.random() * bouncePool.length)]);
                     } else {
-                        if (allowRepeat) {
-                            // 循环取值
-                            for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[i % bouncePool.length]);
-                        } else {
-                            // 取前N个
-                            targetsSequence = bouncePool.slice(0, Math.min(maxBounces, bouncePool.length));
-                        }
+                        if (allowRepeat) for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[i % bouncePool.length]);
+                        else targetsSequence = bouncePool.slice(0, Math.min(maxBounces, bouncePool.length));
                     }
                 }
 
-                // 4. 计算延迟逻辑 (人越多延迟越短，最低30ms，营造连击感)
                 let stepDelay = 150;
-                if (targetsSequence.length > 3) {
-                    stepDelay = Math.max(30, 150 - (targetsSequence.length - 3) * 20);
-                }
+                if (targetsSequence.length > 3) stepDelay = Math.max(30, 150 - (targetsSequence.length - 3) * 20);
 
-                // 5. 执行延迟弹射
                 targetsSequence.forEach((enemy, index) => {
                      const realN = index + 1;
                      const delay = realN * stepDelay;
-                     // 伤害公式中的 n 受 m (倍率上限) 限制
                      const n = (damageCapM > 0) ? Math.min(realN, damageCapM) : realN;
-                     
                      setTimeout(() => {
                          if (enemy.isDead()) return;
                          let damage = 0;
                          try {
                              const a = user, b = enemy, v = $gameVariables._data;
-                             // 这里的 n 使用闭包中的值
                              damage = Math.floor(eval(ricochetFormula));
-                         } catch (e) { console.error("[Sec] 弹射公式错误", e); }
+                         } catch (e) {}
                          
                          if (damage > 0) {
                              const originalHp = enemy.hp;
                              enemy.gainHp(-damage);
-                             
-                             // 特殊处理：只显示数字，不显示战斗日志文本(防止刷屏)
                              enemy._ignoreDamageLog = true;
-                             
-                             // 构造临时result显示弹窗
                              const originalResult = enemy._result;
                              enemy._result = { hpDamage: damage, missed: false, evaded: false, hpAffected: true };
                              enemy.startDamagePopup();
                              enemy.performDamage();
                              enemy._result = originalResult;
-                             
-                             // 死亡判定
                              if (enemy.isDead() && originalHp > 0) {
                                  if (BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', enemy);
                              }
                          }
                      }, delay);
                 });
-            } catch(e) { console.error("[Sec] 弹射主逻辑错误", e); }
+            } catch(e) {}
         }
     }
 
     // ======================================================================
     // 3. 挂钩：Game_Action.prototype.apply
-    //    作用：处理【受击后】的被动逻辑（累计反击积攒、伤害转移结算）
     // ======================================================================
     const _Game_Action_apply = Game_Action.prototype.apply;
     Game_Action.prototype.apply = function(target) {
         _Game_Action_apply.call(this, target);
-        
         const result = target.result();
-        // 判定条件：必须命中 且 造成了伤害
         if (result.isHit() && result.hpDamage > 0) {
             const damageValue = result.hpDamage;
-            
-            // 仅针对我方角色处理被动逻辑
             if (target.isActor()) {
                 const actorId = target.actorId();
-                
-                // --- 逻辑 A：累计反击的数据积攒 (功能8) ---
                 const accumulated = _Sec_AccumulatedDamage.get(actorId) || 0;
                 _Sec_AccumulatedDamage.set(actorId, accumulated + damageValue);
 
-                // --- 逻辑 B：伤害转移的结算 (功能9) ---
-                // 检查当前受击者是否有转移标记
                 const transferInfo = _Sec_TransferMarker.get(actorId);
-                
                 if (transferInfo) {
                     const markerActor = $gameActors.actor(transferInfo.markerId);
-                    
-                    // 确保承担伤害的人(守护者)还活着
                     if (markerActor && !markerActor.isDead()) {
                         let transferDamage = 0, recoverAmount = 0;
                         try {
@@ -642,30 +686,30 @@
                             const r = transferInfo.transferRate / 100;
                             const mhp = markerActor.mhp, def = markerActor.def, mdef = markerActor.mdf;
                             
-                            // 计算转移伤害 (守护者应受到的伤害)
+                            // 1. 计算守护者（markerActor, 即变量a）应受到的伤害
                             if (transferInfo.transferFormula) {
+                                const a = markerActor; // 守护者
+                                const b = target;      // 被守护者
                                 transferDamage = Math.floor(eval(transferInfo.transferFormula));
                             } else {
-                                // 默认公式
                                 transferDamage = Math.floor(d * r * (1 + mhp/1000) * (1 - Math.min(0.5, def/1000) - Math.min(0.3, mdef/1000)));
                             }
                             transferDamage = Math.max(1, transferDamage);
 
-                            // 计算恢复量 (受击者应回血量，抵消掉部分伤害)
+                            // 2. 计算被守护者（target, 即变量b）应恢复的血量
                             if (transferInfo.recoverFormula) {
+                                const a = markerActor; 
+                                const b = target;
                                 recoverAmount = Math.floor(eval(transferInfo.recoverFormula));
                             } else {
-                                // 默认公式
                                 recoverAmount = Math.floor(d * r * (1 + mhp/2000));
                             }
                             recoverAmount = Math.max(0, recoverAmount);
-                        } catch(e) { console.error("[Sec] 伤害转移公式错误", e); }
+                        } catch(e) {}
 
-                        // 延迟300ms给受击者回血（视觉效果：先扣血再回上来）
                         if (!target.isDead()) {
                             setTimeout(() => {
                                 target.gainHp(recoverAmount);
-                                // 临时构造result显示绿色回血字样
                                 const tempRes = target._result;
                                 target._result = { hpDamage: -recoverAmount, hpAffected: true, missed: false, evaded: false };
                                 target.startDamagePopup();
@@ -673,15 +717,12 @@
                             }, 300);
                         }
 
-                        // 守护者立即扣血
                         markerActor.gainHp(-transferDamage);
-                        markerActor._ignoreDamageLog = true; // 不显示文本日志
+                        markerActor._ignoreDamageLog = true;
                         markerActor.result().hpDamage = transferDamage;
                         markerActor.result().hpAffected = true;
                         markerActor.startDamagePopup();
                         markerActor.performDamage();
-                        
-                        // 如果守护者死了，移除全队标记
                         if (markerActor.isDead()) {
                              $gameParty.members().forEach(m => _Sec_TransferMarker.delete(m.actorId()));
                              markerActor.performCollapse();
@@ -694,12 +735,10 @@
 
     // ======================================================================
     // 4. 挂钩：BattleManager.startAction
-    //    作用：每回合行动开始前，清理临时的日志忽略标记
     // ======================================================================
     const _BattleManager_startAction = BattleManager.startAction;
     BattleManager.startAction = function() {
         const all = $gameParty.members().concat($gameTroop.members());
-        // 清理所有单位的临时标记
         all.forEach(b => {
             b._ignoreMpLog = undefined;
             b._ignoreDamageLog = undefined;
