@@ -1,3 +1,4 @@
+{
 //=============================================================================
 // MOG_BattleCursor.js
 //=============================================================================
@@ -893,6 +894,10 @@ Scene_Battle.prototype.onSelectAction = function() {
     if (this._itemWindow && this._itemWindow.visible) { this._itemWindow.hide(); }
     
     // 强制显示指令窗口（v1.8需求）
+    // 【Fix by Gemini】: 增加 isInputting 判断，防止在不需要目标选择（如防御）直接结束输入时，窗口残留
+    if (this._actorCommandWindow && BattleManager.isInputting()) { this._actorCommandWindow.show(); } 
+    
+    // 强制显示指令窗口（v1.8需求）
     if (this._actorCommandWindow) { this._actorCommandWindow.show(); } 
     
     // 【v1.7 修复】：开始选择目标时，强制隐藏“战斗/逃跑”窗口
@@ -1484,3 +1489,4 @@ Window_BattleTargetName.prototype.syncSelectedTarget = function() {
 };
 
 })();
+}
