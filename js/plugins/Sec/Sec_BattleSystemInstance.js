@@ -1,373 +1,75 @@
 /*:
  * @target MZ
- * @plugindesc [重构版v2.6] 战斗系统实例插件 - 终极案例库版
+ * @plugindesc [重构版v2.8] 战斗系统实例插件 - 协战修复与正则优化版
  * @author Secmon (Refactored by Gemini)
- * @version 2.6.0
+ * @version 2.8.0
  *
  * @help
  * ============================================================================
- * ★ 插件功能与终极案例手册 v2.6 ★
+ * ★ 插件功能与终极案例手册 v2.8 ★
  * ============================================================================
  * 本插件允许在【职业】、【敌人】或【技能】的备注栏中填写特定标签。
- * 下文包含各个机制的详细参数说明及海量实战案例。
  *
  * 【通用变量表】(所有公式均可用)
- * a    : 动作使用者 (或 亡语中的死者 / 转移中的守护者)
- * b    : 动作目标   (或 亡语中的凶手 / 转移中的被守护者)
- * v[n] : 游戏变量 (例如 v[10])
- * s[n] : 游戏开关 (例如 s[5])
- * dmg  : 本次行动造成的实际伤害数值 (仅受击/吸血等逻辑可用)
+ * a    : 动作使用者
+ * b    : 动作目标
+ * v[n] : 游戏变量
+ * s[n] : 游戏开关
+ * dmg  : 实际伤害数值
  *
  * ============================================================================
  * 一、被动触发模块 (Passives)
  * ----------------------------------------------------------------------------
- * 填写位置：
- * - 角色：数据库 -> 职业 (Classes) -> 备注
- * - 敌人：数据库 -> 敌人 (Enemies) -> 备注 (支持亡语)
+ * 位置：职业(Class) 或 敌人(Enemy) 备注
  * ----------------------------------------------------------------------------
+ * 1. 普攻/受击特效
+ * <战斗触发:Attack, a.gainMp(10)>      // 普攻回蓝
+ * <战斗触发:Hit, a.gainTp(10)>         // 受击回怒
  *
- * 1. 普攻特效 (Attack Effect)
- * ----------------------------------------------------------------------------
- * 格式：<战斗触发:Attack, 公式>
- *
- * 【参数详解】
- * [1] 类型 (String):
- * - "Attack": 发起普攻时触发 (仅a有效)。
- * - "Hit":    受到伤害时触发 (a=受击者, b=攻击者)。
- * [2] 公式 (JavaScript):
- * - 任意有效的JS代码。
- *
- * [实战案例库]
- * // 1.【魔剑士】普攻吸魔：每次普攻回复 10点 MP
- * <战斗触发:Attack, a.gainMp(10)>
- *
- * // 2.【狂战士】鲜血渴望：普攻扣自己50血，换取10点怒气(TP)
- * <战斗触发:Attack, a.gainHp(-50); a.gainTp(10)>
- *
- * // 3.【赌徒】幸运一击：20%概率给敌人附加“眩晕”(状态5)
- * <战斗触发:Attack, if(Math.random()<0.2) b.addState(5)>
- *
- * // 4.【盗贼】偷钱：普攻时获得 1~10 金币
- * <战斗触发:Attack, $gameParty.gainGold(Math.floor(Math.random()*10)+1)>
- *
- * ----------------------------------------------------------------------------
- * 2. 受击特效 (Hit Effect)
- * ----------------------------------------------------------------------------
- * 格式：<战斗触发:Hit, 公式>
- *
- * 【参数详解】
- * [1] 类型 (String):
- * - "Attack": 发起普攻时触发 (仅a有效)。
- * - "Hit":    受到伤害时触发 (a=受击者, b=攻击者)。
- * [2] 公式 (JavaScript):
- * - 任意有效的JS代码。
- * 
- * [实战案例库]
- * // 1.【战士】坚韧：受到伤害获得 5点 TP
- * <战斗触发:Hit, a.gainTp(5)>
- *
- * // 2.【重甲卫士】应激防御：受到伤害时，给自己附加“防御提升”(状态30)
- * <战斗触发:Hit, a.addState(30)>
- *
- * // 3.【荆棘怪】反伤甲：受到伤害时，反弹 30% 的真实伤害给攻击者
- * <战斗触发:Hit, b.gainHp(-dmg * 0.3); b.startDamagePopup()>
- *
- * // 4.【幻术师】闪避本能：若受到超过500点伤害，获得“分身”(状态40，提升闪避率)
- * <战斗触发:Hit, if(dmg > 500) a.addState(40)>
- *
- * ----------------------------------------------------------------------------
- * 3. 亡语机制 (Death Rattle)
- * ----------------------------------------------------------------------------
- * 格式：<战斗触发:Dead, 公式>
- * 
- * 【参数详解】
- * [1] 类型固定为 "Dead"。
- * [2] 公式 (JavaScript):
- * - a 代表死者，b 代表造成最后一击的凶手。
- * - 支持多行代码，用分号 ; 隔开。
- *
- * [实战案例库]
- * // 1.【自爆怪】烈焰殉爆：对凶手造成 1000 点固定伤害
- * <战斗触发:Dead, b.gainHp(-1000); b.startDamagePopup()>
- *
- * // 2.【剧毒史莱姆】临死喷溅：让凶手陷入“剧毒”(状态10)
- * <战斗触发:Dead, b.addState(10)>
- *
- * // 3.【圣职者】神圣遗志：死后复活所有队友并回满血 (仅作示例，逻辑需严谨)
- * <战斗触发:Dead, $gameParty.deadMembers().forEach(m => { m.revive(); m.gainHp(9999); })>
- *
- * // 4.【赏金首领】巨额赏金：击杀者获得 5000 金币
- * <战斗触发:Dead, $gameParty.gainGold(5000)>
- *
+ * 2. 亡语机制 (Death Rattle)
+ * <战斗触发:Dead, b.addState(10)>      // 死后让凶手中毒
  *
  * ============================================================================
  * 二、技能主动模块 (Active Skills)
  * ----------------------------------------------------------------------------
- * 填写位置：数据库 -> 技能 (Skills) -> 备注
+ * 位置：技能(Skill) 备注
  * ----------------------------------------------------------------------------
- *
- * 1. 溅射伤害 (Splash Damage)
- * ----------------------------------------------------------------------------
- * 格式：<溅射伤害: 比例, 范围>
- * 参数：[比例 0.0-1.0], [范围 整数]
- *
- * 【参数详解】
- * [1] 比例 (Number):
- * - 0.0 到 1.0 之间的小数，代表溅射伤害的比例。
- * - 例如：0.5 代表 50% 溅射伤害。
- * [2] 范围 (Integer):
- * - 整数，代表溅射伤害的范围。
- * - 例如：1 代表主目标左右各 1 个单位。
- * - 范围越大，溅射伤害的范围就越大。
- *
- * [实战案例库]
- * // 1.【横扫】顺劈斩：对主目标左右各 1 个单位造成 50% 溅射伤害
- * <溅射伤害: 0.5, 1>
- *
- * // 2.【冲击波】直线贯通：对主目标左右各 2 个单位造成 80% 溅射伤害 (宽范围)
- * <溅射伤害: 0.8, 2>
- *
- * // 3.【微风】轻微波及：对左右各 1 个单位造成 10% 的“刮蹭”伤害
- * <溅射伤害: 0.1, 1>
- *
- * ----------------------------------------------------------------------------
- * 2. 斩杀追击 (Execution)
- * ----------------------------------------------------------------------------
- * 格式：<斩杀追击: 阈值%, 公式>
- * 参数：[阈值 1-100], [伤害公式]
- *
- * 【参数详解】
- * [1] 阈值 (Number):
- * - 1 到 100 之间的整数，代表目标血量的百分比。
- * - 例如：30 代表目标血量低于 30% 时触发。
- * [2] 伤害公式 (JavaScript):
- * - 任意有效的JS代码，代表斩杀追击时的伤害值。
- * - 可以使用 a 代表目标，b 代表攻击者。
- * - 例如：2000 代表追加 2000 点真实伤害。
- * - 例如：b.hp 代表直接斩杀 (造成等于当前血量的伤害)。
- *
- * [实战案例库]
- * // 1.【刺客】处决：若目标血量低于 30%，追加 2000 点真实伤害
- * <斩杀追击: 30, 2000>
- *
- * // 2.【死神】灵魂收割：若目标血量低于 10%，直接斩杀 (造成等于当前血量的伤害)
- * <斩杀追击: 10, b.hp>
- *
- * // 3.【猎人】弱点补刀：若目标血量低于 50%，追加 2倍攻击力 的伤害
- * <斩杀追击: 50, a.atk * 2>
- *
- * ----------------------------------------------------------------------------
- * 3. 技能吸血 (Vampirism)
- * ----------------------------------------------------------------------------
- * 格式：<技能吸血: 比例>
- * 参数：[比例 0.0-1.0]
- *
- * 【参数详解】
- * [1] 比例 (Number):
- * - 0.0 到 1.0 之间的小数，代表技能吸血的比例。
- * - 例如：0.3 代表回复伤害值 30% 的血量。
- * - 例如：1.0 代表造成多少伤害就回多少血 (100%吸血)。
- * - 例如：0.05 代表带有少量吸血效果(5%)的神圣打击。
- *
- * [实战案例库]
- * // 1.【吸血鬼】吸血之触：回复伤害值 30% 的血量
- * <技能吸血: 0.3>
- *
- * // 2.【黑暗骑士】生命吞噬：造成多少伤害就回多少血 (100%吸血)
- * <技能吸血: 1.0>
- *
- * // 3.【圣骑士】微量回覆：带有少量吸血效果(5%)的神圣打击
- * <技能吸血: 0.05>
- *
- * ----------------------------------------------------------------------------
- * 4. 状态交互 (State Interaction)
- * ----------------------------------------------------------------------------
- * 格式：<状态交互: 状态ID, 公式, 移除?, 范围>
- * 范围：Target, Self, AllAllies
- * 公式：正数伤，负数奶
- *
- * 【参数详解】
- * [1] 状态ID (Number):
- * - 整数，代表目标或队友的状态ID。
- * - 例如：15 代表“冻结”(状态15)。
- * - 例如：10 代表“中毒”(状态10)。
- * - 例如：20 代表“力量祝福”(状态20)。
- * - 例如：30 代表“瘟疫”(状态30)。
- * [2] 公式 (JavaScript):
- * - 任意有效的JS代码，代表状态交互时的伤害值或回复血量。
- * - 可以使用 a 代表目标，b 代表攻击者。
- * - 例如：a.mat * 3 代表造成 3倍魔攻伤害。
- * - 例如：-500 代表回复 500 血。
- * [3] 移除? (Boolean):
- * - true 代表移除目标或队友的状态。
- * - false 代表不移除状态，仅造成伤害或回复血量。
- * [4] 范围 (String):
- * - Target 代表仅对目标生效。
- * - Self 代表仅对自己生效。
- * - AllAllies 代表对所有队友生效。
- *
- * [实战案例库]
- * // 1.【法师】冰火引爆：若目标有“冻结”(状态15)，造成 3倍魔攻伤害并移除冻结
- * <状态交互: 15, a.mat * 3, true, Target>
- *
- * // 2.【牧师】净化术：若队友有“中毒”(状态10)，移除它，并回复 500 血
- * <状态交互: 10, -500, true, AllAllies>
- *
- * // 3.【恶魔】吞噬力量：若自己有“力量祝福”(状态20)，移除它，回复 1000 血
- * <状态交互: 20, -1000, true, Self>
- *
- * // 4.【死灵】疫病加重：若目标有“瘟疫”(状态30)，不移除，再造成 500 伤害
- * <状态交互: 30, 500, false, Target>
- *
- * ----------------------------------------------------------------------------
- * 5. 力场共鸣 (Field Resonance)
- * ----------------------------------------------------------------------------
- * 格式：<力场共鸣: 状态ID, 模式, 公式, 移除?>
- * 模式：Spread(炸全场), Gather(聚合并炸单体,可用变量n)
- *
- * 【参数详解】
- * [1] 状态ID (Number):
- * - 整数，代表目标或队友的状态ID。
- * - 例如：50 代表“尸体标记”(状态50)。
- * - 例如：60 代表“光之印记”(状态60)。
- * - 例如：70 代表“回春”(状态70)。
- * [2] 模式 (String):
- * - Spread 代表对全场生效。
- * - Gather 代表对所有带有该状态的单位生效。
- * [3] 公式 (JavaScript):
- * - 任意有效的JS代码，代表力场共鸣时的伤害值或回复血量。
- * - 可以使用 a 代表目标，b 代表攻击者。
- * - 例如：a.mat * 2 代表造成 2倍魔攻伤害。
- * - 例如：-1000 代表回复 1000 血。
- * [4] 移除? (Boolean):
- * - true 代表移除目标或队友的状态。
- * - false 代表不移除状态，仅造成伤害或回复血量。
- *
- * [实战案例库]
- * // 1.【术士】连环尸爆 (Spread)：
- * // 引爆全场所有带有“尸体标记”(状态50)的单位，造成魔攻2倍伤害，移除标记
- * <力场共鸣: 50, Spread, a.mat * 2, true>
- *
- * // 2.【贤者】光之聚合 (Gather)：
- * // 统计全场带有“光之印记”(状态60)的人数n，对BOSS造成 n * 2000 伤害
- * <力场共鸣: 60, Gather, n * 2000, true>
- *
- * // 3.【辅助】共鸣治疗 (Spread)：
- * // 让全场带有“回春”(状态70)的单位瞬间回复 1000 血 (公式写负数)
- * <力场共鸣: 70, Spread, -1000, false>
- *
+ * 1. 溅射伤害: <溅射伤害: 0.5, 1>      // 50%伤害溅射左右各1人
+ * 2. 斩杀追击: <斩杀追击: 30, 2000>    // 血量低于30%追加2000伤害
+ * 3. 技能吸血: <技能吸血: 0.2>         // 吸血20%
+ * 4. 状态交互: <状态交互: 10, a.mat*3, true, Target> // 引爆状态10
+ * 5. 力场共鸣: <力场共鸣: 20, Spread, a.mat*2, true> // 全场引爆状态20
+ * 6. 伤害转移: <伤害转移: 100, 100, d*0.5, d>        // 帮队友承伤
+ * 7. 累计反击: <累计反击: 110, def, 200, d*3>        // 蓄力反击
+ * 8. 弹射伤害: <弹射伤害: 3000, damage*0.8, 3, 0, false, Random>
  *
  * ============================================================================
- * 三、高级机制模块 (Advanced)
+ * 三、全局行动监听模块 (Action Observer) [v2.8 重启]
  * ----------------------------------------------------------------------------
- * 填写位置：数据库 -> 技能 (Skills) -> 备注
+ * 位置：职业(Class) 或 敌人(Enemy) 备注
  * ----------------------------------------------------------------------------
+ * 这里的“追击”是指：立即插入一个额外的技能行动，不消耗回合数。
  *
- * 1. 伤害转移 (Damage Transfer)
+ * 1. 队友协战 (Synergy)
  * ----------------------------------------------------------------------------
- * 格式：<伤害转移: 状态ID, 分摊比例%, 转移公式, 恢复公式>
- * 变量 d: 原始伤害值
- * 变量 n: 队友数量
- * 
- * 【参数详解】
- * [1] 状态ID (Number):
- * - 整数，代表目标或队友的状态ID。
- * - 例如：100 代表“守护骑士”(状态100)。
- * - 例如：101 代表“灵魂锁链”(状态101)。
- * - 例如：102 代表“狂信徒”(状态102)。
- * [2] 分摊比例% (Number):
- * - 0.0 到 100.0 之间的小数，代表伤害转移的比例。
- * - 例如：50 代表伤害被分摊到队友各一半。
- * - 例如：100 代表伤害被完全拦截。
- * [3] 转移公式 (JavaScript):
- * - 任意有效的JS代码，代表伤害转移时的伤害值。
- * - 可以使用 d 代表原始伤害值。
- * - 例如：d * 0.5 代表转移 50% 伤害。
- * - 例如：d * 0.3 * n 代表转移 30% 伤害，每人额外多 30% 伤害 (按队友数量n)。
- * [4] 恢复公式 (JavaScript):
- * - 任意有效的JS代码，代表被守护者(b)要回多少血 (用于抵消原始伤害)。
- * - 可以使用 d 代表原始伤害值。
- * - 例如：d * 0.5 代表回复 50% 伤害。
- * - 例如：d * 0.3 * n 代表回复 30% 伤害，每人额外多 30% 回复 (按队友数量n)。
+ * 描述：当队友行动时，我有概率跟着打一下。
+ * 格式：<队友协战: 触发类型, 概率%, 技能ID>
+ * 类型：Attack(队友普攻), Skill(队友攻击技能), Support(队友辅助), Any(任意)
  *
- *
- * [实战案例库]
- * // 1.【守护骑士】完全援护：
- * // 队友受到的伤害100%被拦截。骑士防御高，只受 50% 伤害。队友完全不扣血。
- * // 状态ID: 100
- * <伤害转移: 100, 100, d * 0.5, d>
- *
- * // 2.【灵魂锁链】痛苦分担：
- * // 队友受到的伤害，50%转移给施法者。两人各承受一半。
- * // 状态ID: 101
- * <伤害转移: 101, 50> 
- * (注：省略公式则默认按比例扣除守护者血量，并让队友回血抵消该比例)
- *
- * // 3.【狂信徒】牺牲祝福：
- * // 队友受伤时，狂信徒承受 100% 伤害。队友反而回复 伤害值x1.5 的血量(过量治疗)。
- * // 状态ID: 102
- * <伤害转移: 102, 100, d, d * 1.5>
+ * [案例]
+ * // 当队友普攻时，我有30%概率使用“二连击”(技能10)跟刀
+ * <队友协战: Attack, 30, 10>
  *
  * ----------------------------------------------------------------------------
- * 2. 累计反击 (Accumulated Counter)
+ * 2. 敌方识破 (Counter/Reaction)
  * ----------------------------------------------------------------------------
- * 格式：<累计反击: 状态ID, 属性, 值, 反击公式>
- * 变量 d: 蓄力期间累计伤害
- * 变量 n: 队友数量
- * 
- * 【参数详解】
- * [1] 状态ID (Number):
- * - 整数，代表目标或队友的状态ID。
- * - 例如：110 代表“盾卫”(状态110)。
- * - 例如：111 代表“剑圣”(状态111)。
- * - 例如：112 代表“武僧”(状态112)。
- * [2] 属性 (String):
- * - 开启期间提升的属性: "def"(防), "atk"(攻), "mat"(魔攻), "hp"(血上限)等。
- * [3] 值 (Integer): 属性提升的数值。
- * - 例如：200 代表“盾卫”开启姿态时，防御力(def) + 200。
- * - 例如：50 代表“剑圣”开启姿态时，攻击力(atk) + 50。
- * - 例如：1000 代表“武僧”开启姿态时，血上限(hp) + 1000 (临时撑血)。
- * [4] 反击公式 (JavaScript):
- * - 释放时的伤害公式。
- * - 变量 d: 蓄力期间累计受到的伤害总和。
- * - 例如：d * 3 代表造成 (累计受到伤害 * 3) 的反击伤害。
- * - 例如：a.atk * 10 代表造成 (施法者攻击力 * 10) 的拔刀斩伤害。
- * - 例如：d * 0.5 * n 代表造成 (累计受到伤害 * 0.5) 伤害，每人额外多 50% 伤害 (按队友数量n)。
+ * 描述：当敌人行动时，我进行反制。
+ * 格式：<敌方识破: 触发类型, 概率%, 技能ID>
+ * 类型：Support(敌人加Buff/回血), Attack(敌人攻击), Any(任意)
  *
- * [实战案例库]
- * // 1.【盾卫】盾牌反击：
- * // 开启姿态(状态110)：防御力(def) + 200。
- * // 再次释放：造成 (累计受到伤害 * 3) 的反击伤害。
- * <累计反击: 110, def, 200, d * 3>
- *
- * // 2.【剑圣】冥想蓄力：
- * // 开启姿态(状态111)：攻击力(atk) + 50。
- * // 再次释放：与受到的伤害无关，造成 (a.atk * 10) 的拔刀斩伤害。
- * <累计反击: 111, atk, 50, a.atk * 10>
- *
- * // 3.【武僧】忍耐：
- * // 开启姿态(状态112)：血上限(hp) + 1000 (临时撑血)。
- * // 再次释放：将受到的痛苦转化为 (d * 5) 的真实伤害打回去。
- * <累计反击: 112, hp, 1000, d * 5>
- *
- * ----------------------------------------------------------------------------
- * 3. 弹射伤害 (Ricochet)
- * ----------------------------------------------------------------------------
- * 格式：<弹射伤害: 初始公式, 弹射公式, 次数, 倍率上限, 允许重复?, 模式>
- * 变量 damage: 上一次伤害 / n: 当前第几次
- *
- * [实战案例库]
- * // 1.【雷电法师】闪电链 (经典)：
- * // 首发3000伤害。弹射3次。每次伤害衰减20% (damage*0.8)。随机目标。
- * <弹射伤害: 3000, damage * 0.8, 3, 0, false, Random>
- *
- * // 2.【猎手】回旋镖 (顺序)：
- * // 首发物攻2倍。弹射4次。伤害不衰减。按敌人站位顺序依次打击。
- * <弹射伤害: a.atk*2, damage, 4, 0, false, Order>
- *
- * // 3.【混沌法师】混乱法球 (递增)：
- * // 首发500。弹射5次。每次伤害增加500 (damage+500)。允许重复打同一个人(true)。
- * <弹射伤害: 500, damage + 500, 5, 0, true, Random>
+ * [案例]
+ * // 当敌人使用辅助技能时，我100%使用“驱散”(技能30)反击他
+ * <敌方识破: Support, 100, 30>
  *
  * ============================================================================
  */
@@ -388,21 +90,17 @@
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
-        
-        // ------------------------------------------------------------------
-        // 2.0 执行原版逻辑
-        // ------------------------------------------------------------------
         _Game_Action_executeDamage.call(this, target, value);
 
         const subject = this.subject();
         const item = this.item();
-        const actualDamage = target.result().hpDamage; // 核心：获取实际伤害
+        const actualDamage = target.result().hpDamage; 
 
         // ------------------------------------------------------------------
         // 2.1 【模块 A】 被动机制 (Passives)
         // ------------------------------------------------------------------
         
-        // --- A1. 普攻特效 (仅角色) ---
+        // --- A1. 普攻特效 ---
         if (subject && subject.isActor() && this.isAttack()) {
             const classData = subject.currentClass();
             if (classData && classData.note) {
@@ -420,7 +118,7 @@
             }
         }
 
-        // --- A2. 受击特效 (仅角色) ---
+        // --- A2. 受击特效 ---
         if (target && target.isActor()) {
             const result = target.result();
             if (result.isHit() || actualDamage > 0) {
@@ -441,10 +139,9 @@
             }
         }
 
-        // --- A3. 亡语 (Death Effects) ---
+        // --- A3. 亡语 ---
         if (target && target.isDead()) {
              let noteData = "";
-             
              if (target.isActor()) {
                  const classData = target.currentClass();
                  if (classData) noteData = classData.note;
@@ -458,14 +155,11 @@
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        const a = target; // 死者
-                        const b = subject; // 凶手
+                        const a = target; 
+                        const b = subject; 
                         const v = $gameVariables._data;
-                        const s = $gameSwitches._data;
                         eval(formula);
-                    } catch (e) { 
-                        console.error(`[Sec] A3(亡语) 执行错误`, e); 
-                    }
+                    } catch (e) { console.error(`[Sec] A3 Error`, e); }
                 }
              }
         }
@@ -478,7 +172,7 @@
         const note = item.note;
         
         // --- B1. 状态交互 ---
-        const stateInteractMatches = note.matchAll(/<状态交互:(\d+),([^,]+),([^,]+),([^>]+)>/g);
+        const stateInteractMatches = note.matchAll(/<状态交互:\s*(\d+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^>]+)\s*>/g);
         for (const match of stateInteractMatches) {
             const stateId = parseInt(match[1]);
             const formula = match[2].trim();
@@ -509,7 +203,7 @@
         }
 
         // --- B2. 力场共鸣 ---
-        const fieldResMatches = note.matchAll(/<力场共鸣:(\d+),([^,]+),([^,]+),([^>]+)>/g);
+        const fieldResMatches = note.matchAll(/<力场共鸣:\s*(\d+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^>]+)\s*>/g);
         for (const match of fieldResMatches) {
             const stateId = parseInt(match[1]);
             const mode = match[2].trim().toLowerCase();
@@ -552,18 +246,21 @@
             }
         }
 
-        // --- B3. 溅射伤害 ---
-        const splashMatch = note.match(/<溅射伤害:([\d\.]+),(\d+)>/);
+        // --- B3. 溅射伤害 [修复正则与判定] ---
+        // 正则现在允许逗号前后有空格: <溅射伤害: 0.5, 1>
+        const splashMatch = note.match(/<溅射伤害:\s*([\d\.]+)\s*,\s*(\d+)\s*>/);
         if (splashMatch && actualDamage > 0) {
             const rate = parseFloat(splashMatch[1]);
             const range = parseInt(splashMatch[2]);
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
             
+            // 筛选条件：不同于主目标、存活、已出现(防隐形怪)、索引距离在范围内
             const neighbors = friends.members().filter(member => {
                 const idx = member.index();
                 return member !== target && 
                        member.isAlive() && 
+                       member.isAppeared() && 
                        Math.abs(idx - centerIndex) <= range;
             });
             
@@ -578,16 +275,14 @@
         }
 
         // --- B4. 斩杀追击 ---
-        const execMatch = note.match(/<斩杀追击:(\d+),([^>]+)>/);
+        const execMatch = note.match(/<斩杀追击:\s*(\d+)\s*,\s*([^>]+)\s*>/);
         if (execMatch) {
             const threshold = parseInt(execMatch[1]) / 100;
             const formula = execMatch[2].trim();
-            
             if (target.hpRate() < threshold && target.isAlive()) {
                 try {
                     const a = subject, b = target, v = $gameVariables._data, dmg = actualDamage;
                     const bonusDmg = Math.floor(eval(formula));
-                    
                     if (bonusDmg > 0) {
                         setTimeout(() => {
                             target.gainHp(-bonusDmg);
@@ -600,17 +295,15 @@
         }
 
         // --- B5. 技能吸血 ---
-        const drainMatch = note.match(/<技能吸血:([\d\.]+)>/);
+        const drainMatch = note.match(/<技能吸血:\s*([\d\.]+)\s*>/);
         if (drainMatch && actualDamage > 0) {
             const rate = parseFloat(drainMatch[1]);
             const healAmount = Math.floor(actualDamage * rate);
-            
             if (healAmount > 0 && subject.isAlive()) {
                 subject.gainHp(healAmount);
                 subject.startDamagePopup();
             }
         }
-
 
         // ------------------------------------------------------------------
         // 2.3 【模块 C】 高级与遗留机制
@@ -639,13 +332,12 @@
         }
     };
 
-
     /**
      * 处理复杂的遗留功能
      */
     function processComplexFeatures(user, target, note) {
         // 功能 8：累计反击
-        const counterMatch = note.match(/<累计反击:(\d+),([^,]+),([^,]+),([^>]+)>/);
+        const counterMatch = note.match(/<累计反击:\s*(\d+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^>]+)\s*>/);
         if (counterMatch) {
             const stateId = parseInt(counterMatch[1]);
             const statType = counterMatch[2].trim().toLowerCase();
@@ -658,7 +350,6 @@
                     const accumulatedDamage = _Sec_AccumulatedDamage.get(actorId) || 0;
                     const a = user, b = target, d = accumulatedDamage, v = $gameVariables._data;
                     const damage = Math.floor(eval(counterFormula));
-                    
                     if (damage > 0) {
                         if (this.isForAll()) {
                             this.targetsForOpponents().forEach(t => {
@@ -695,7 +386,7 @@
         }
 
         // 功能 9：伤害转移
-        const dtMatch = note.match(/<伤害转移:(\d+),([\d\.]+)(?:,([^,>]+)(?:,([^>]+))?)?>/);
+        const dtMatch = note.match(/<伤害转移:\s*(\d+)\s*,\s*([\d\.]+)(?:,\s*([^,>]+)(?:,\s*([^>]+))?)?\s*>/);
         if (dtMatch) {
              const stateId = parseInt(dtMatch[1]);
              const rate = parseFloat(dtMatch[2]);
@@ -717,7 +408,7 @@
         }
 
         // 功能 10：弹射伤害
-        const ricochetMatch = note.match(/<弹射伤害:([^,]+),([^,]+),(\d+),(\d+),([^,]+),([^>]+)>/);
+        const ricochetMatch = note.match(/<弹射伤害:\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([^,]+)\s*,\s*([^>]+)\s*>/);
         if (ricochetMatch) {
             const initFormula = ricochetMatch[1];
             const ricochetFormula = ricochetMatch[2];
@@ -813,17 +504,15 @@
                             const r = transferInfo.transferRate / 100;
                             const mhp = markerActor.mhp, def = markerActor.def, mdef = markerActor.mdf;
                             
-                            // 1. 计算守护者（markerActor, 即变量a）应受到的伤害
                             if (transferInfo.transferFormula) {
-                                const a = markerActor; // 守护者
-                                const b = target;      // 被守护者
+                                const a = markerActor; 
+                                const b = target;      
                                 transferDamage = Math.floor(eval(transferInfo.transferFormula));
                             } else {
                                 transferDamage = Math.floor(d * r * (1 + mhp/1000) * (1 - Math.min(0.5, def/1000) - Math.min(0.3, mdef/1000)));
                             }
                             transferDamage = Math.max(1, transferDamage);
 
-                            // 2. 计算被守护者（target, 即变量b）应恢复的血量
                             if (transferInfo.recoverFormula) {
                                 const a = markerActor; 
                                 const b = target;
@@ -871,6 +560,133 @@
             b._ignoreDamageLog = undefined;
         });
         _BattleManager_startAction.call(this);
+    };
+
+    // ======================================================================
+    // 5. [NEW] 模块 D：全局行动监听器 (Action Observer) [v2.8]
+    // ======================================================================
+    
+    // 监听行动结束时刻
+    const _BattleManager_endAction = BattleManager.endAction;
+    BattleManager.endAction = function() {
+        const triggerSubject = this._subject;
+        const triggerAction = this._action;
+        
+        // 执行原版逻辑
+        _BattleManager_endAction.call(this);
+
+        // 如果本次行动有效，且不是递归调用(防止死循环)，则广播信号
+        if (triggerSubject && triggerAction && !this._isRecursiveForce) {
+            // 标记递归锁，防止协战触发协战
+            this._isRecursiveForce = true;
+            this.broadcastActionSignal(triggerSubject, triggerAction);
+            this._isRecursiveForce = false;
+        }
+    };
+
+    /**
+     * 向全场广播行动信号，寻找响应者
+     */
+    BattleManager.broadcastActionSignal = function(source, action) {
+        const allMembers = $gameParty.members().concat($gameTroop.members());
+        
+        // 简单处理：按队列顺序触发
+        for (const observer of allMembers) {
+            // 排除死者和行动者自己
+            if (!observer.isAlive() || observer === source) continue;
+            
+            // D1. 队友协战: 观察者与源是队友
+            if (observer.friendsUnit() === source.friendsUnit()) {
+                this.checkSynergy(observer, source, action);
+            }
+            
+            // D2. 敌方识破: 观察者与源是敌人
+            if (observer.friendsUnit() !== source.friendsUnit()) {
+                this.checkReaction(observer, source, action);
+            }
+        }
+    };
+
+    /**
+     * 检查协战逻辑 (Synergy)
+     */
+    BattleManager.checkSynergy = function(observer, source, action) {
+        let note = "";
+        if (observer.isActor()) {
+            const c = observer.currentClass();
+            if (c) note = c.note;
+        } else {
+            const e = observer.enemy();
+            if (e) note = e.note;
+        }
+
+        // 正则优化：允许逗号前后的空格
+        const matches = note.matchAll(/<队友协战:\s*([^,]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*>/g);
+        for (const match of matches) {
+            const type = match[1].trim().toLowerCase();
+            const chance = parseInt(match[2]);
+            const skillId = parseInt(match[3]);
+            
+            let matchType = false;
+            if (type === 'any') matchType = true;
+            else if (type === 'attack' && action.isAttack()) matchType = true;
+            else if (type === 'skill' && action.isSkill() && !action.isAttack()) matchType = true;
+            else if (type === 'support' && (action.isForFriend() || action.isRecover())) matchType = true;
+
+            if (matchType && Math.random() * 100 < chance) {
+                // 协战跟随：-2 代表“上一个行动的目标”，即跟随队友打同一个怪
+                observer.forceAction(skillId, -2);
+                return; // 一次只触发一个
+            }
+        }
+    };
+
+    /**
+     * 检查识破逻辑 (Reaction)
+     */
+    BattleManager.checkReaction = function(observer, source, action) {
+        let note = "";
+        if (observer.isActor()) {
+            const c = observer.currentClass();
+            if (c) note = c.note;
+        } else {
+            const e = observer.enemy();
+            if (e) note = e.note;
+        }
+
+        const matches = note.matchAll(/<敌方识破:\s*([^,]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*>/g);
+        for (const match of matches) {
+            const type = match[1].trim().toLowerCase();
+            const chance = parseInt(match[2]);
+            const skillId = parseInt(match[3]);
+            
+            let matchType = false;
+            if (type === 'any') matchType = true;
+            // 判断是否是“辅助自己/队友”的行为
+            if (type === 'support' && (action.isForFriend() || action.isRecover())) matchType = true;
+            // 判断是否是“攻击我方”的行为
+            else if (type === 'attack' && action.isForOpponent()) matchType = true;
+
+            if (matchType && Math.random() * 100 < chance) {
+                // 智能锁定逻辑：
+                // 如果我的反制技能是攻击性的（对敌方），强制锁定 source (谁惹我我打谁)
+                // 如果我的反制技能是增益性的（对自己），锁定 observer (给自己加buff)
+                const reactionSkill = $dataSkills[skillId];
+                let targetIndex = -2;
+
+                if (reactionSkill) {
+                     // 范围 1~6 是敌方单体/全体/随机
+                     if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) {
+                         targetIndex = source.index(); // 锁定那个敌人
+                     } else {
+                         targetIndex = observer.index(); // 锁定自己
+                     }
+                }
+                
+                observer.forceAction(skillId, targetIndex);
+                return;
+            }
+        }
     };
 
 })();
