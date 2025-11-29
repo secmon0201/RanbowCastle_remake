@@ -1,0 +1,12 @@
+{
+    "name": "rmmz-game",
+    "main": "index.html",
+    "chromium-args": "--force-color-profile=srgb",
+    "window": {
+        "title": "彩虹城堡完美重置版",
+        "width": 480,
+        "height": 720,
+        "position": "center",
+        "icon": "icon/icon.png"
+    }
+}
