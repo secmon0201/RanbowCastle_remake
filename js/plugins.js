@@ -27,5 +27,5 @@ var $plugins =
 {"name":"Sq/Sq_CustomClassCurve","status":true,"description":"[v2.1] 自定义职业属性成长曲线 (含升级全恢复功能)","parameters":{"EnableRecoverAllOnLevelUp":"true","ClassConfigs":"[\"{\\\"ClassId\\\":\\\"1\\\",\\\"MHP_Formula\\\":\\\"Math.floor(30 * Math.pow(level, 1.55) + 50)\\\",\\\"MMP_Formula\\\":\\\"Math.floor(10 * level + 50)\\\",\\\"ATK_Formula\\\":\\\"Math.floor(15 + 3 * level + 0.12 * level * level)\\\",\\\"DEF_Formula\\\":\\\"Math.floor(10 + 2.5 * level + 0.08 * level * level)\\\",\\\"MAT_Formula\\\":\\\"Math.floor(10 + 1.5 * level)\\\",\\\"MDF_Formula\\\":\\\"Math.floor(10 + 2 * level + 0.05 * level * level)\\\",\\\"AGI_Formula\\\":\\\"Math.floor(15 + 2 * level)\\\",\\\"LUK_Formula\\\":\\\"10 + level\\\"}\"]"}},
 {"name":"Sq/Sq_Dev_BattlePoser","status":true,"description":"[仅战斗测试] 终极编辑器: 防误触 + 一键居中","parameters":{}},
 {"name":"Sq/Sq_SuperFrontbanMp","status":false,"description":"[补丁] 战斗中不显示MP伤害/恢复数字","parameters":{}},
-{"name":"Sec/Sec_Encyclopedia","status":true,"description":"[Sec] 综合图鉴系统 (最终完整版)","parameters":{}}
+{"name":"Sec/Sec_Encyclopedia","status":true,"description":"[Sec] 综合图鉴系统 (最终完整版)","parameters":{"menuCommandName":"图鉴"}}
 ];
