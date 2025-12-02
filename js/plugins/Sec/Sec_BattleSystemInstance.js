@@ -91,6 +91,9 @@
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         
+        // 【修复】在造成伤害前，先记录目标是否已经死亡
+        const wasDead = target.isDead();
+
         // 2.0 执行原版逻辑
         _Game_Action_executeDamage.call(this, target, value);
 
@@ -106,7 +109,6 @@
         if (subject && subject.isActor() && this.isAttack()) {
             const classData = subject.currentClass();
             if (classData && classData.note) {
-                // 正则优化：兼容空格和中文标点
                 const matches = classData.note.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
                     const formula = match[1].trim();
@@ -142,12 +144,16 @@
             }
         }
 
-        // --- A3. 亡语 ---
-        if (target && target.isDead()) {
+        // --- A3. 亡语 (修复版) ---
+        // 只有当目标“之前没死”且“现在死了”才触发，防止鞭尸和未致死触发
+        if (target && !wasDead && target.isDead()) {
              let noteData = "";
+             
+             // 【修复】同时读取“角色备注”和“职业备注”，防止玩家写错地方
              if (target.isActor()) {
-                 const classData = target.currentClass();
-                 if (classData) noteData = classData.note;
+                 const actorNote = target.actor().note || "";
+                 const classNote = (target.currentClass() && target.currentClass().note) || "";
+                 noteData = actorNote + "\n" + classNote;
              } else if (target.isEnemy()) {
                  const enemyData = target.enemy();
                  if (enemyData) noteData = enemyData.note;
@@ -158,10 +164,32 @@
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        const a = target; 
-                        const b = subject; 
+                        const a = target;  // 死者
+                        const b = subject; // 凶手
                         const v = $gameVariables._data;
+                        const dmg = actualDamage;
+                        
+                        console.log(`[Sec] 亡语触发: ${target.name()} 亡语反击 -> ${subject.name()}`);
+                        
+                        // 1. 执行公式 (数据层变动)
                         eval(formula);
+
+                        // 2. 【修复】手动补全凶手(b)的视觉反馈
+                        if (b && b.isAlive !== undefined) {
+                            // 如果公式导致了凶手HP变动 (gainHp会自动设置 hpAffected 为 true)
+                            if (b.result().hpAffected) {
+                                b.startDamagePopup(); // 弹出伤害数字
+                                b.performDamage();    // 播放受击动作(变白/震动)和音效
+                            }
+                            
+                            // 3. 【修复】如果凶手被亡语反杀
+                            if (b.isDead()) {
+                                b.performCollapse(); // 播放敌人死亡/消失动画
+                                if (b.isActor()) {
+                                    b.refresh(); // 如果是角色，刷新状态栏
+                                }
+                            }
+                        }
                     } catch (e) { console.error(`[Sec] A3 Error`, e); }
                 }
              }
@@ -249,8 +277,7 @@
             }
         }
 
-        // --- B3. 溅射伤害 (兼容性增强修复) ---
-        // 允许中文标点，允许空格
+        // --- B3. 溅射伤害 (功能修复 + 视觉优化) ---
         const splashMatch = note.match(/<溅射伤害[:：]\s*([\d\.]+)\s*[,，]\s*(\d+)\s*>/);
         if (splashMatch && actualDamage > 0) {
             const rate = parseFloat(splashMatch[1]);
@@ -258,7 +285,7 @@
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
             
-            // 筛选条件：不是目标本人 && 活着 && 已显形(防止溅射到隐形敌人) && 距离符合
+            // 筛选条件：同阵营 + 活着 + 已显形 + 索引距离符合 + 不是目标本人
             const neighbors = friends.members().filter(member => {
                 const idx = member.index();
                 return member !== target && 
@@ -267,15 +294,21 @@
                        Math.abs(idx - centerIndex) <= range;
             });
             
+            if (neighbors.length > 0) {
+                console.log(`[Sec] 溅射触发: 中心[${target.name()}] 范围[${range}] 溅射目标数[${neighbors.length}]`);
+            }
+
             neighbors.forEach(n => {
                 const splashDmg = Math.floor(actualDamage * rate);
                 if (splashDmg > 0) {
                     n.gainHp(-splashDmg);
-                    n.startDamagePopup(); 
-                    if (n.isDead()) n.performCollapse();
-                }
-            });
-        }
+                    // 【修复】添加完整的视觉反馈
+                    n.startDamagePopup();  // 弹数字
+                    n.performDamage();     // 受击动作/变白
+                    if (n.isDead()) n.performCollapse(); // 死亡动画
+            }
+        });
+    }
 
         // --- B4. 斩杀追击 ---
         const execMatch = note.match(/<斩杀追击[:：]\s*(\d+)\s*[,，]\s*([^>]+)\s*>/);
@@ -305,6 +338,7 @@
             if (healAmount > 0 && subject.isAlive()) {
                 subject.gainHp(healAmount);
                 subject.startDamagePopup();
+                subject.performDamage(); // 治疗也可能需要反馈，或改用 sound
             }
         }
 
