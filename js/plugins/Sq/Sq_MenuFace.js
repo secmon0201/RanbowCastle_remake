@@ -72,16 +72,18 @@ Scene_MenuBase.prototype.createBackground = function() {
 //↓这是菜单命令窗口
 Scene_Menu.prototype.commandWindowRect = function() {
     const ww = 140;
-    const wh = 380;
+    // 修改高度：原 380 + (3行 x 36px) ≈ 490
+    // 这样可以多显示约 3 个命令，且在 854 高度的屏幕中左侧也不会太拥挤
+    const wh = 490; 
     const wx = 0;
     const wy = -5;
     return new Rectangle(wx, wy, ww, wh);
 };
 
-//↓这是状态窗口
+//↓这是状态窗口 (修改：高度改为 854)
 Scene_Menu.prototype.statusWindowRect = function() {
     const ww = 340;
-    const wh = 720;
+    const wh = 854; // 修正：由 720 改为 854 以填满新分辨率的高度
     const wx = 140;
     const wy = -5;
     return new Rectangle(wx, wy, ww, wh);
@@ -242,12 +244,14 @@ class Sprite_MenuGauge extends Sprite_Gauge {
     }
 }
 
-// 金币窗口矩形（480x720分辨率左下角）
+// 金币窗口矩形 (修改：Y坐标适配 854 高度)
 Scene_Menu.prototype.goldWindowRect = function() {
-    const ww = 144;    // 窗口宽度（保持你原来的144，也可调整）
-    const wh = 70;     // 窗口高度（保持你原来的48）
-    const wx = 0;      // 左下角X坐标（紧贴左侧）
-    const wy = 715 - wh; // 左下角Y坐标（屏幕高度 - 窗口高度，紧贴底部）
+    const ww = 144;    
+    const wh = 70;     
+    const wx = 0;      
+    // 修正：计算底部坐标 (屏幕高度 854 - 窗口高度 70 - 底部留白 5)
+    // 之前的 715 大约是 720-5，所以这里用 854-5 = 849
+    const wy = 854 - wh - 5; 
     return new Rectangle(wx, wy, ww, wh);
 };
 

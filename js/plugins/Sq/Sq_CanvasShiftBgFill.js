@@ -1,11 +1,11 @@
 /*:
  * @target MZ
- * @plugindesc [移动端强力版] 480x720 画布强制置顶，解决手机端居中问题，包含CSS注入功能
+ * @plugindesc [移动端强力版] 480x854 画布强制置顶，解决手机端居中问题，包含CSS注入功能
  * @author ChatGPT & User (Mobile Force Fix)
  *
  * @help
  * ============================================================================
- * 移动端显示问题修复说明
+ * 移动端显示问题修复说明 (适配 480x854)
  * ============================================================================
  * 若在手机端使用时发现画面依然居中或顶部存在黑边，请按以下步骤排查：
  * 1. 确保插件参数中的「锚点模式」已选择 "顶部对齐 (Top)"
@@ -38,15 +38,15 @@
  * @text 背景图片
  * @type file
  * @dir img/pictures/
- * @desc 填充黑边的图片。
+ * @desc 填充黑边的图片 (建议尺寸 1080x2400 或更大以覆盖所有机型)。
  * @default
  *
  * @param BackgroundMode
  * @text 图片填充模式
  * @type select
- * @option cover (铺满)
+ * @option cover (铺满-保持比例裁切)
  * @value cover
- * @option contain (完整)
+ * @option contain (完整-可能留白)
  * @value contain
  * @default cover
  */
@@ -55,8 +55,11 @@
     'use strict';
 
     const PLUGIN_NAME = document.currentScript.src.split("/").pop().replace(".js", "");
+    
+    // 🔥 核心修改：分辨率适配 480x854
     const FIXED_W = 480;
-    const FIXED_H = 720;
+    const FIXED_H = 854; 
+    
     const params = PluginManager.parameters(PLUGIN_NAME);
 
     const Config = {
@@ -71,6 +74,9 @@
     //=============================================================================
     const CSSInjector = {
         init() {
+            // 防止重复注入
+            if (document.getElementById('force-mobile-layout-css')) return;
+
             const style = document.createElement('style');
             style.type = 'text/css';
             style.id = 'force-mobile-layout-css';
@@ -79,8 +85,6 @@
             const topVal = (Config.anchor === 'top') ? `${Config.offsetY}px` : 'auto';
             
             // 构建强制 CSS
-            // body: 禁用 flex 居中，重置边距
-            // canvas: 强制 margin:0, 强制 top 位置
             const css = `
                 body {
                     margin: 0 !important;
@@ -88,20 +92,26 @@
                     display: block !important; /* 禁止 Flex 居中 */
                     overflow: hidden !important;
                     background-color: #000;
+                    width: 100vw;
+                    height: 100vh;
                 }
                 canvas#gameCanvas {
                     margin: 0 !important; /* 禁止 auto 居中 */
+                    padding: 0 !important;
                     position: absolute !important;
                     transform-origin: 0 0 !important; /* 防止旋转锚点错误 */
+                    display: block !important;
                     ${Config.anchor === 'top' ? `top: ${topVal} !important; bottom: auto !important;` : ''}
                     ${Config.anchor === 'bottom' ? `bottom: 0 !important; top: auto !important;` : ''}
-                    /* 如果是 center，交给 JS 计算，不强制 top/bottom */
+                    z-index: 10; /* 确保画布在背景图之上 */
+                    /* 优化渲染清晰度 */
+                    image-rendering: -webkit-optimize-contrast;
                 }
                 #fixed-bg-layer {
                     position: fixed !important;
                     top: 0; left: 0;
                     width: 100vw; height: 100vh;
-                    z-index: -1;
+                    z-index: 0; /* 确保背景在最底层 */
                     pointer-events: none;
                 }
             `;
@@ -118,18 +128,20 @@
             const sw = window.innerWidth;
             const sh = window.innerHeight;
 
-            // 1. 缩放计算：确保 480x720 能够完整放入屏幕
+            // 1. 缩放计算：确保 480x854 能够完整放入屏幕
             const scale = Math.min(sw / FIXED_W, sh / FIXED_H);
-            const realW = FIXED_W * scale;
-            const realH = FIXED_H * scale;
+            
+            // 优化：使用 floor 取整防止子像素渲染导致的模糊
+            const realW = Math.floor(FIXED_W * scale);
+            const realH = Math.floor(FIXED_H * scale);
 
             // 2. X轴永远居中
-            const left = (sw - realW) / 2;
+            const left = Math.floor((sw - realW) / 2);
 
-            // 3. Y轴 JS 计算 (作为 CSS 的补充，主要处理 Center 模式)
+            // 3. Y轴 JS 计算 (作为 CSS 的补充)
             let top = 0;
             if (Config.anchor === 'center') {
-                top = (sh - realH) / 2;
+                top = Math.floor((sh - realH) / 2);
             } else if (Config.anchor === 'bottom') {
                 top = sh - realH;
             } else {
@@ -137,13 +149,13 @@
                 top = Config.offsetY;
             }
 
-            // 4. 应用样式 (注意：CSS !important 会覆盖这里的 top，双重保险)
+            // 4. 应用样式
             canvas.style.width = `${realW}px`;
             canvas.style.height = `${realH}px`;
             canvas.style.left = `${left}px`;
             
             // 只有在非 Top 模式或者需要动态计算时，JS 的 top 才起作用
-            // 但为了兼容性，我们依然赋值
+            // CSS 的 !important 优先级高于此处，但此处赋值可作为 fallback
             canvas.style.top = `${top}px`; 
             
             // 更新系统 Scale，修正点击
@@ -157,6 +169,9 @@
     const BGManager = {
         init() {
             if (!Config.bgImage) return;
+            // 防止重复创建
+            if (document.getElementById('fixed-bg-layer')) return;
+
             const div = document.createElement('div');
             div.id = 'fixed-bg-layer';
             const url = `img/pictures/${Config.bgImage}`;
@@ -207,6 +222,7 @@
     //=============================================================================
     // 5. 触控修正 (Touch Fix)
     //=============================================================================
+    // 强制使用 getBoundingClientRect 获取真实坐标，无视系统原来的偏移计算
     TouchInput._convertToGamePos = function(clientX, clientY) {
         const canvas = Graphics._canvas;
         if (!canvas) return;

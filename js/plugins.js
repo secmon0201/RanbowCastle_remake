@@ -20,7 +20,7 @@ var $plugins =
 {"name":"Sq/Sq_Fangheiping","status":true,"description":"v1.0.0 <防止游戏运行黑屏>","parameters":{}},
 {"name":"Sq/Sq_item","status":true,"description":"模拟崩铁物品菜单 可以写小作文","parameters":{"Max Columns (Item Scene)":"3","Row Spacing":"10","Detail Window Width":"180","Item Name Font Size":"18","Item Desc Font Size":"12","Item Story Font Size":"14","Big Icon Display Size":"80","Help Window Name Font Size":"18","Help Window Desc Font Size":"16"}},
 {"name":"Sq/Sq_MenuFace","status":true,"description":"[UI] 菜单界面美化 - 脸图/布局/计量槽/背景","parameters":{}},
-{"name":"Sq/Sq_CanvasShiftBgFill","status":false,"description":"[移动端强力版] 480x720 画布强制置顶，解决手机端居中问题，包含CSS注入功能","parameters":{"AnchorMode":"top","OffsetY":"50","BackgroundImage":"background","BackgroundMode":"cover"}},
+{"name":"Sq/Sq_CanvasShiftBgFill","status":true,"description":"[移动端强力版] 480x854 画布强制置顶，解决手机端居中问题，包含CSS注入功能","parameters":{"AnchorMode":"top","OffsetY":"50","BackgroundImage":"","BackgroundMode":"cover"}},
 {"name":"Sq/Sq_MenuAddLoad","status":true,"description":"[UI综合优化] 菜单读档 + 技能/装备/状态/存档/商店界面重构","parameters":{"enableLoadCommand":"false"}},
 {"name":"Sq/Sec_TutorialSystem","status":true,"description":"[剧情] 新手强制引导系统 - 配合剧本演出使用","parameters":{}},
 {"name":"Sec/Sec_TalentMenu","status":true,"description":"[合集] 天赋菜单系统 - 原版窗口风格修复版","parameters":{"CommandName":"天赋","MaxColumns":"1","DefaultSpMax":"100"}},
