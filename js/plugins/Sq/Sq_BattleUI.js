@@ -34,7 +34,7 @@
 (() => {
 // 这是脸图战斗窗口
 Scene_Battle.prototype.statusWindowRect = function() {
-    const extra = 10;
+    const extra = -1;
     const ww = 480
     const wh = 200+ extra;
     const wx = 0;

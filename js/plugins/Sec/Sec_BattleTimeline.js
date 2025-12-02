@@ -41,7 +41,7 @@
  * @desc 时间轴窗口的 X 坐标。
  * @type number
  * @min -9999
- * @default 50
+ * @default 80
  *
  * @param TimelineY
  * @text 时间轴 Y 坐标
@@ -49,7 +49,7 @@
  * @desc 时间轴 Y 坐标。
  * @type number
  * @min -1
- * @default 210
+ * @default 195
  *
  * @param TimelineWidth
  * @text 时间轴宽度
@@ -70,7 +70,7 @@
  * @parent ---Settings---
  * @desc 后续预测图标的正方形边长。
  * @type number
- * @default 24
+ * @default 30
  *
  * @param IconSpacing
  * @text 图标间距
