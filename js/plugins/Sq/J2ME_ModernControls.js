@@ -1,22 +1,21 @@
 /*:
  * @target MZ
- * @plugindesc [v2.1.0] 现代风虚拟按键核心 - 完美版
+ * @plugindesc [v2.1.1] 现代风虚拟按键核心 - 完美版
  * @author Gemini AI & J2ME
  *
  * @help
  * ============================================================================
- * J2ME Modern Pad Core (v2.1.0 - DOM Version)
+ * J2ME Modern Pad Core (v2.1.1 - DOM Version)
  * ============================================================================
  *
- * --- v2.1.0 更新说明 ---
- * 1. 【战斗沉浸优化】：新增战斗状态智能检测。
- * - 当玩家输入完战斗指令，左侧窗口消失并开始执行战斗动作（攻击、技能动画）时，
- * 虚拟按键会自动隐藏，提供更好的视觉体验。
- * - 下一回合开始或需要输入时，按键会自动浮现。
+ * --- v2.1.1 紧急修复 ---
+ * 1. 【强力去UI】：针对手机端汉堡键无法消除的问题，增加了“核弹级”修复。
+ * 即使有其他插件（如VisuStella）强行创建了UI按钮，本插件也会在场景
+ * 启动时强制检测并移除它们。
+ * 2. 【参数容错】：即使未刷新插件参数，默认也会开启隐藏系统UI功能。
  *
- * --- v2.0.9 历史修复 ---
- * 1. 【粘键逻辑重构】：修复了进入设置菜单时导致的无限确认Bug。
- * 2. 【安全清理】：模式切换时强制清理输入状态。
+ * --- v2.1.0 历史更新 ---
+ * 1. 【战斗沉浸】：战斗执行动作时自动隐藏按键。
  *
  * --- 使用方法 ---
  * 请在事件中使用【插件指令】：
@@ -111,8 +110,10 @@
     const pluginName = "J2ME_ModernControls";
     const parameters = PluginManager.parameters(pluginName);
 
-    // --- 参数读取 ---
-    const pDisableDefaultUI = parameters['DisableDefaultUI'] === 'true';
+    // --- 参数读取 (v2.1.1 增强容错) ---
+    // 如果用户没刷新参数，getParameter获取到的是undefined，这里强制默认视为true
+    const rawDisableUI = parameters['DisableDefaultUI'];
+    const pDisableDefaultUI = (rawDisableUI === undefined || rawDisableUI === '') ? true : (rawDisableUI === 'true');
     
     const pBtnColor = parameters['ButtonColor'] || '#F0F0F0';
     const pSymColor = parameters['SymbolColor'] || '#555555';
@@ -131,13 +132,47 @@
     const pDefEscScale = Number(parameters['DefEscScale'] || 1.0);
 
     // =========================================================================
-    // Disable Default UI
+    // Disable Default UI (v2.1.1 Nuclear Fix)
     // =========================================================================
     if (pDisableDefaultUI) {
+        // 1. 拦截创建方法 (第一道防线)
         const _Scene_Map_createMenuButton = Scene_Map.prototype.createMenuButton;
         Scene_Map.prototype.createMenuButton = function() { return; };
+        
         const _Scene_Base_createCancelButton = Scene_Base.prototype.createCancelButton;
         Scene_Base.prototype.createCancelButton = function() { return; };
+
+        // 2. 场景启动后强制清理 (第二道防线 - 针对 VisuStella 等插件的强制注入)
+        const _Scene_Map_start = Scene_Map.prototype.start;
+        Scene_Map.prototype.start = function() {
+            _Scene_Map_start.call(this);
+            this.forceClearTouchUI();
+        };
+
+        const _Scene_Base_start = Scene_Base.prototype.start;
+        Scene_Base.prototype.start = function() {
+            _Scene_Base_start.call(this);
+            // 只有在非 PadConfig 界面才清理，防止误伤（虽然PadConfig没有cancelButton）
+            if (!(this instanceof Scene_PadConfig)) {
+                if (this.forceClearTouchUI) this.forceClearTouchUI();
+            }
+        };
+
+        // 定义清理函数
+        Scene_Base.prototype.forceClearTouchUI = function() {
+            // 清理汉堡键
+            if (this._menuButton) {
+                this._menuButton.visible = false;
+                if (this._menuButton.parent) this._menuButton.parent.removeChild(this._menuButton);
+                this._menuButton = null;
+            }
+            // 清理返回键
+            if (this._cancelButton) {
+                this._cancelButton.visible = false;
+                if (this._cancelButton.parent) this._cancelButton.parent.removeChild(this._cancelButton);
+                this._cancelButton = null;
+            }
+        };
     }
 
     // =========================================================================
@@ -478,7 +513,6 @@
             });
         },
 
-        // --- 核心更新：UI 自动避让逻辑 (v2.1.0 增强) ---
         shouldUIHide(scene) {
             if (!scene) return true;
             
@@ -488,35 +522,23 @@
             const isMenu = (scene instanceof Scene_MenuBase);
             const isConfig = (scene instanceof Scene_PadConfig);
 
-            // 1. 如果不是这些场景，隐藏
             if (!isMap && !isBattle && !isTitle && !isMenu) return true;
-            // 2. 设置和菜单默认显示
             if (isConfig || isMenu) return false;
 
-            // --- 窗口检测 ---
             const mw = scene._messageWindow;
             const cw = mw ? mw._choiceListWindow : null;
             const ni = mw ? mw._numberInputWindow : null;
             const ei = mw ? mw._eventItemWindow : null;
 
-            // 3. 【高优先级】交互窗口检测
-            // 无论是在战斗中还是地图上，只要出现了“选项”、“数字输入”、“物品选择”，
-            // 说明需要玩家操作，必须强制显示按键。
             const isChoiceOpen = cw && cw.visible && cw.openness > 0;
             const isNumOpen = ni && ni.visible && ni.openness > 0;
             const isItemOpen = ei && ei.visible && ei.openness > 0;
             if (isChoiceOpen || isNumOpen || isItemOpen) return false;
 
-            // 4. 【战斗沉浸逻辑】(v2.1.0 新增)
-            // 如果是在战斗中，且系统判定当前“不需要玩家输入指令” (isInputting 为 false)
-            // 这意味着：战斗正在执行中（播放攻击动画、扣血等），此时隐藏按键。
-            // 注意：因为上面的第3步已经排除了“剧情选项”，所以这里可以放心隐藏。
             if (isBattle && BattleManager && !BattleManager.isInputting()) {
                 return true;
             }
 
-            // 5. 【常规剧情检测】
-            // 如果有纯文本对话，或者消息窗口正忙，隐藏
             if ($gameMessage.hasText()) return true;
             const isMessageBusy = $gameMessage.isBusy();
             const isMwVisible = mw && mw.visible && mw.openness > 0;
