@@ -85,13 +85,15 @@
     const _Sec_AccumulatedDamage = new Map();
     const _Sec_TransferMarker = new Map();
 
+
+
     // ======================================================================
-    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (完美修正版)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         
-        // 【修复】在造成伤害前，先记录目标是否已经死亡
+        // 【A3前置】记录受击前的死亡状态
         const wasDead = target.isDead();
 
         // 2.0 执行原版逻辑
@@ -99,7 +101,7 @@
 
         const subject = this.subject();
         const item = this.item();
-        const actualDamage = target.result().hpDamage; // 获取实际伤害
+        const actualDamage = target.result().hpDamage; 
 
         // ------------------------------------------------------------------
         // 2.1 【模块 A】 被动机制
@@ -113,8 +115,7 @@
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        const a = subject, b = target, v = $gameVariables._data, s = $gameSwitches._data;
-                        const dmg = actualDamage;
+                        const a = subject, b = target, v = $gameVariables._data;
                         if (formula.includes('gainMp')) subject._ignoreMpLog = true;
                         eval(formula);
                         subject._ignoreMpLog = false;
@@ -134,7 +135,6 @@
                         const formula = match[1].trim();
                         try {
                             const a = target, b = subject, v = $gameVariables._data;
-                            const dmg = actualDamage;
                             if (formula.includes('gainMp')) target._ignoreMpLog = true;
                             eval(formula);
                             target._ignoreMpLog = false;
@@ -144,12 +144,9 @@
             }
         }
 
-        // --- A3. 亡语 (修复版) ---
-        // 只有当目标“之前没死”且“现在死了”才触发，防止鞭尸和未致死触发
+        // --- A3. 亡语 ---
         if (target && !wasDead && target.isDead()) {
              let noteData = "";
-             
-             // 【修复】同时读取“角色备注”和“职业备注”，防止玩家写错地方
              if (target.isActor()) {
                  const actorNote = target.actor().note || "";
                  const classNote = (target.currentClass() && target.currentClass().note) || "";
@@ -164,31 +161,16 @@
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
-                        const a = target;  // 死者
-                        const b = subject; // 凶手
-                        const v = $gameVariables._data;
-                        const dmg = actualDamage;
-                        
-                        console.log(`[Sec] 亡语触发: ${target.name()} 亡语反击 -> ${subject.name()}`);
-                        
-                        // 1. 执行公式 (数据层变动)
+                        const a = target, b = subject, v = $gameVariables._data, dmg = actualDamage;
+                        console.log(`[Sec] 亡语触发: ${target.name()} -> ${subject.name()}`);
                         eval(formula);
 
-                        // 2. 【修复】手动补全凶手(b)的视觉反馈
                         if (b && b.isAlive !== undefined) {
-                            // 如果公式导致了凶手HP变动 (gainHp会自动设置 hpAffected 为 true)
                             if (b.result().hpAffected) {
-                                b.startDamagePopup(); // 弹出伤害数字
-                                b.performDamage();    // 播放受击动作(变白/震动)和音效
+                                b.startDamagePopup();
+                                b.performDamage();
                             }
-                            
-                            // 3. 【修复】如果凶手被亡语反杀
-                            if (b.isDead()) {
-                                b.performCollapse(); // 播放敌人死亡/消失动画
-                                if (b.isActor()) {
-                                    b.refresh(); // 如果是角色，刷新状态栏
-                                }
-                            }
+                            if (b.isDead()) b.performCollapse();
                         }
                     } catch (e) { console.error(`[Sec] A3 Error`, e); }
                 }
@@ -198,7 +180,7 @@
         if (!item) return;
 
         // ------------------------------------------------------------------
-        // 2.2 【模块 B】 技能主动机制
+        // 2.2 【模块 B】 技能主动机制 (全视觉修复)
         // ------------------------------------------------------------------
         const note = item.note;
         
@@ -220,12 +202,13 @@
                     try {
                         const a = subject, b = t, v = $gameVariables._data;
                         const val = Math.floor(eval(formula));
-                        if (val > 0) { 
+                        if (val !== 0) { 
                             t.gainHp(-val);
-                            if (t.result().hpAffected) t.startDamagePopup();
-                        } else if (val < 0) { 
-                            t.gainHp(-val); 
-                            if (t.result().hpAffected) t.startDamagePopup();
+                            // 【修复】写入UI结果
+                            t.result().hpDamage = val;
+                            t.result().hpAffected = true;
+                            t.startDamagePopup();
+                            if (val > 0) t.performDamage();
                         }
                         if (removeState) t.removeState(stateId);
                     } catch (e) { console.error(`[Sec] B1 Error`, e); }
@@ -252,7 +235,10 @@
                             const val = Math.floor(eval(formula));
                             if (val > 0) {
                                 m.gainHp(-val);
-                                if (m.result().hpAffected) m.startDamagePopup();
+                                // 【修复】写入UI结果
+                                m.result().hpDamage = val;
+                                m.result().hpAffected = true;
+                                m.startDamagePopup();
                                 m.performDamage(); 
                                 if (m.isDead()) m.performCollapse();
                             }
@@ -268,7 +254,10 @@
                         const val = Math.floor(eval(formula));
                         if (val > 0) {
                             target.gainHp(-val);
-                            if (target.result().hpAffected) target.startDamagePopup();
+                            // 【修复】写入UI结果
+                            target.result().hpDamage = val;
+                            target.result().hpAffected = true;
+                            target.startDamagePopup();
                             target.performDamage();
                         }
                         if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
@@ -277,7 +266,7 @@
             }
         }
 
-        // --- B3. 溅射伤害 (功能修复 + 视觉优化) ---
+        // --- B3. 溅射伤害 (重点修复) ---
         const splashMatch = note.match(/<溅射伤害[:：]\s*([\d\.]+)\s*[,，]\s*(\d+)\s*>/);
         if (splashMatch && actualDamage > 0) {
             const rate = parseFloat(splashMatch[1]);
@@ -285,7 +274,6 @@
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
             
-            // 筛选条件：同阵营 + 活着 + 已显形 + 索引距离符合 + 不是目标本人
             const neighbors = friends.members().filter(member => {
                 const idx = member.index();
                 return member !== target && 
@@ -301,14 +289,21 @@
             neighbors.forEach(n => {
                 const splashDmg = Math.floor(actualDamage * rate);
                 if (splashDmg > 0) {
+                    // 1. 扣血 (数据)
                     n.gainHp(-splashDmg);
-                    // 【修复】添加完整的视觉反馈
-                    n.startDamagePopup();  // 弹数字
-                    n.performDamage();     // 受击动作/变白
-                    if (n.isDead()) n.performCollapse(); // 死亡动画
-            }
-        });
-    }
+                    
+                    // 2. 【核心修复】写入 Result (UI回执)
+                    // 如果不写这一步，startDamagePopup 会看到 hpDamage=0，所以不弹字
+                    n.result().hpDamage = splashDmg;
+                    n.result().hpAffected = true;
+
+                    // 3. 触发视觉
+                    n.startDamagePopup();  // 现在它能读到 hpDamage 了
+                    n.performDamage();     // 播放受击动画
+                    if (n.isDead()) n.performCollapse();
+                }
+            });
+        }
 
         // --- B4. 斩杀追击 ---
         const execMatch = note.match(/<斩杀追击[:：]\s*(\d+)\s*[,，]\s*([^>]+)\s*>/);
@@ -322,7 +317,12 @@
                     if (bonusDmg > 0) {
                         setTimeout(() => {
                             target.gainHp(-bonusDmg);
+                            // 【修复】写入UI结果
+                            target.result().hpDamage = bonusDmg;
+                            target.result().hpAffected = true;
+                            
                             target.startDamagePopup();
+                            target.performDamage();
                             if (target.isDead()) target.performCollapse();
                         }, 100);
                     }
@@ -337,8 +337,11 @@
             const healAmount = Math.floor(actualDamage * rate);
             if (healAmount > 0 && subject.isAlive()) {
                 subject.gainHp(healAmount);
+                // 【修复】写入UI结果 (负数代表治疗)
+                subject.result().hpDamage = -healAmount; 
+                subject.result().hpAffected = true;
+
                 subject.startDamagePopup();
-                subject.performDamage(); // 治疗也可能需要反馈，或改用 sound
             }
         }
 
