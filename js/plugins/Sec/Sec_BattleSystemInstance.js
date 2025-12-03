@@ -644,8 +644,17 @@
         }
     };
 
-    // 协战检查 (正则增强)
+    // ======================================================================
+    // 修复后的协战与识破逻辑
+    // 请替换原有的 checkSynergy 和 checkReaction 函数
+    // ======================================================================
+
+    // ======================================================================
+    // 协战检查 (v2.9.3 严格判定修复版)
+    // 请替换原有的 BattleManager.checkSynergy
+    // ======================================================================
     BattleManager.checkSynergy = function(observer, source, action) {
+        // 读取备注
         let note = "";
         if (observer.isActor()) { const c = observer.currentClass(); if(c) note = c.note; }
         else { const e = observer.enemy(); if(e) note = e.note; }
@@ -657,19 +666,49 @@
             const skillId = parseInt(match[3]);
             
             let matchType = false;
-            if (type === 'any') matchType = true;
-            else if (type === 'attack' && action.isAttack()) matchType = true;
-            else if (type === 'skill' && action.isSkill() && !action.isAttack()) matchType = true;
-            else if (type === 'support' && (action.isForFriend() || action.isRecover())) matchType = true;
 
+            // --- 判定逻辑优化 ---
+            if (type === 'any') {
+                // Any 模式：不排除防御，任何行为都能触发
+                matchType = true;
+            }
+            else if (type === 'attack') {
+                // Attack 模式：必须是攻击，且【绝不能】是防御
+                if (action.isAttack() && !action.isGuard()) matchType = true;
+            }
+            else if (type === 'skill') {
+                // Skill 模式：必须是魔法/特技，排除普攻和防御
+                if (action.isSkill() && !action.isAttack() && !action.isGuard()) matchType = true;
+            }
+            else if (type === 'support') {
+                // Support 模式：友方目标或恢复类，且【绝不能】是防御
+                // (原版中防御是对自己使用，isForFriend判定为真，所以这里必须排除)
+                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            }
+
+            // --- 触发执行 ---
             if (matchType && Math.random() * 100 < chance) {
-                observer.forceAction(skillId, -2); // 跟随目标
-                return;
+                // 智能锁敌逻辑
+                let targetIndex = -2;
+                if (action.isForOne() && this._targets && this._targets.length > 0) {
+                    targetIndex = this._targets[0].index();
+                } else if (action.isForOpponent()) {
+                    const randomTarget = source.opponentsUnit().randomTarget();
+                    if (randomTarget) targetIndex = randomTarget.index();
+                }
+
+                // 调试日志：让你看清楚到底是哪个动作触发的
+                console.log(`[Sec] 协战判定: 源动作[${action.item().name}] (IsAttack:${action.isAttack()} IsGuard:${action.isGuard()}) -> 触发类型[${type}]`);
+                console.log(`[Sec] -> ${observer.name()} 响应协战，释放技能[${skillId}]`);
+                
+                observer.forceAction(skillId, targetIndex);
+                this.forceAction(observer);
+                return; 
             }
         }
     };
 
-    // 识破检查 (正则增强)
+    // 识破检查 (修复版：强制执行)
     BattleManager.checkReaction = function(observer, source, action) {
         let note = "";
         if (observer.isActor()) { const c = observer.currentClass(); if(c) note = c.note; }
@@ -690,11 +729,19 @@
                 const reactionSkill = $dataSkills[skillId];
                 let targetIndex = -2;
                 if (reactionSkill) {
-                     // 如果是攻击技能，锁定源头；如果是Buff技能，锁定自己
+                     // 如果反击技能是攻击，锁定源头(source)
+                     // 如果反击技能是Buff，锁定自己(observer)
                      if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) targetIndex = source.index();
                      else targetIndex = observer.index();
                 }
+                
+                console.log(`[Sec] 识破触发: ${observer.name()} 反制技能[${skillId}]`);
+
                 observer.forceAction(skillId, targetIndex);
+                
+                // 【关键修复】强制插队执行
+                this.forceAction(observer);
+                
                 return;
             }
         }
