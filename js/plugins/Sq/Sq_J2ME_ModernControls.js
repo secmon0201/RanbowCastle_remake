@@ -1,7 +1,7 @@
 /*:
  * @target MZ
  * @plugindesc [v2.1.1] 现代风虚拟按键核心 - 完美版
- * @author Gemini AI & J2ME
+ * @author 神枪手（gemini）
  *
  * @help
  * ============================================================================
@@ -107,7 +107,7 @@
  */
 
 (() => {
-    const pluginName = "J2ME_ModernControls";
+    const pluginName = "Sq_J2ME_ModernControls";
     const parameters = PluginManager.parameters(pluginName);
 
     // --- 参数读取 (v2.1.1 增强容错) ---

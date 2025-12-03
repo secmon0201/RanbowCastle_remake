@@ -1,7 +1,7 @@
 /*:
  * @target MZ
  * @plugindesc [剧情] 新手强制引导系统 (修复版 v1.1) - 允许取消/退出
- * @author Secmon
+ * @author 神枪手
  * @help
  * ============================================================================
  * 插件功能说明 (v1.1 修复版)
@@ -106,7 +106,7 @@
  */
 
 (() => {
-    const pluginName = "Sec_TutorialSystem";
+    const pluginName = "Sq_TutorialSystem";
     
     // 全局状态
     let _tutorialActive = false;
