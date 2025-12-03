@@ -708,12 +708,17 @@
         }
     };
 
-    // 识破检查 (修复版：强制执行)
+    // ======================================================================
+    // 识破检查 (v2.9.4 修复版：强制执行 + 智能反击锁敌)
+    // 请替换原有的 BattleManager.checkReaction
+    // ======================================================================
     BattleManager.checkReaction = function(observer, source, action) {
+        // 1. 读取备注数据
         let note = "";
         if (observer.isActor()) { const c = observer.currentClass(); if(c) note = c.note; }
         else { const e = observer.enemy(); if(e) note = e.note; }
 
+        // 2. 遍历所有识破标签
         const matches = note.matchAll(/<敌方识破[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
         for (const match of matches) {
             const type = match[1].trim().toLowerCase();
@@ -721,28 +726,50 @@
             const skillId = parseInt(match[3]);
             
             let matchType = false;
-            if (type === 'any') matchType = true;
-            else if (type === 'support' && (action.isForFriend() || action.isRecover())) matchType = true;
-            else if (type === 'attack' && action.isForOpponent()) matchType = true;
 
+            // --- 判定逻辑 (排除防御 Guard) ---
+            if (type === 'any') {
+                // Any: 只要玩家动了就触发 (排除防御)
+                if (!action.isGuard()) matchType = true;
+            }
+            else if (type === 'support') {
+                // Support: 玩家使用支援/回血时触发 (排除防御)
+                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            }
+            else if (type === 'attack') {
+                // Attack: 玩家攻击时触发 (排除防御)
+                // 注意: action.isForOpponent() 确保是对敌人(也就是对识破者一方)的动作
+                if (action.isAttack() && action.isForOpponent() && !action.isGuard()) matchType = true;
+            }
+
+            // --- 触发执行 ---
             if (matchType && Math.random() * 100 < chance) {
                 const reactionSkill = $dataSkills[skillId];
-                let targetIndex = -2;
-                if (reactionSkill) {
-                     // 如果反击技能是攻击，锁定源头(source)
-                     // 如果反击技能是Buff，锁定自己(observer)
-                     if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) targetIndex = source.index();
-                     else targetIndex = observer.index();
-                }
                 
-                console.log(`[Sec] 识破触发: ${observer.name()} 反制技能[${skillId}]`);
+                // --- 智能目标锁定 ---
+                let targetIndex = -1;
+                if (reactionSkill) {
+                    // 判断反击技能的类型
+                    // 范围 1~6 通常是攻击敌方 (对玩家来说是攻击敌人，对敌人来说是攻击玩家)
+                    // 所以如果敌人用攻击技能，目标应该是 source (玩家)
+                    if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) {
+                        targetIndex = source.index();
+                    } 
+                    // 范围 7~11 通常是友方/自己 (敌人给自己加Buff)
+                    else {
+                        targetIndex = observer.index();
+                    }
+                }
 
+                console.log(`[Sec] 识破触发: 玩家[${source.name()}]动作 -> ${observer.name()} 反制技能[${skillId}] 目标[${targetIndex}]`);
+
+                // 设置反击行动
                 observer.forceAction(skillId, targetIndex);
                 
-                // 【关键修复】强制插队执行
+                // 【关键修复】强制战斗管理器插入此行动
                 this.forceAction(observer);
                 
-                return;
+                return; // 一次只触发一个反击
             }
         }
     };
