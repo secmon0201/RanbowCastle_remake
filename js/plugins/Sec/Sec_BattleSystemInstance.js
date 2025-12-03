@@ -88,15 +88,15 @@
 
 
     // ======================================================================
-    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (完美修正版)
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (v2.9.2 公式增强版)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         
-        // 【A3前置】记录受击前的死亡状态
+        // 记录受击前的死亡状态
         const wasDead = target.isDead();
 
-        // 2.0 执行原版逻辑
+        // 执行原版逻辑
         _Game_Action_executeDamage.call(this, target, value);
 
         const subject = this.subject();
@@ -180,7 +180,7 @@
         if (!item) return;
 
         // ------------------------------------------------------------------
-        // 2.2 【模块 B】 技能主动机制 (全视觉修复)
+        // 2.2 【模块 B】 技能主动机制
         // ------------------------------------------------------------------
         const note = item.note;
         
@@ -204,7 +204,6 @@
                         const val = Math.floor(eval(formula));
                         if (val !== 0) { 
                             t.gainHp(-val);
-                            // 【修复】写入UI结果
                             t.result().hpDamage = val;
                             t.result().hpAffected = true;
                             t.startDamagePopup();
@@ -235,7 +234,6 @@
                             const val = Math.floor(eval(formula));
                             if (val > 0) {
                                 m.gainHp(-val);
-                                // 【修复】写入UI结果
                                 m.result().hpDamage = val;
                                 m.result().hpAffected = true;
                                 m.startDamagePopup();
@@ -254,7 +252,6 @@
                         const val = Math.floor(eval(formula));
                         if (val > 0) {
                             target.gainHp(-val);
-                            // 【修复】写入UI结果
                             target.result().hpDamage = val;
                             target.result().hpAffected = true;
                             target.startDamagePopup();
@@ -266,10 +263,11 @@
             }
         }
 
-        // --- B3. 溅射伤害 (重点修复) ---
-        const splashMatch = note.match(/<溅射伤害[:：]\s*([\d\.]+)\s*[,，]\s*(\d+)\s*>/);
+        // --- B3. 溅射伤害 (智能全兼容版) ---
+        // 现在的正则可以匹配公式了： <溅射伤害: a.atk * 0.5, 1> 或 <溅射伤害: 0.5, 1>
+        const splashMatch = note.match(/<溅射伤害[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*>/);
         if (splashMatch && actualDamage > 0) {
-            const rate = parseFloat(splashMatch[1]);
+            const param1 = splashMatch[1].trim(); // 可能是 "0.5" 也可能是 "a.atk * 1.5"
             const range = parseInt(splashMatch[2]);
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
@@ -282,24 +280,45 @@
                        Math.abs(idx - centerIndex) <= range;
             });
             
+            // 调试日志：如果控制台没显示这句话，说明没找到邻居
             if (neighbors.length > 0) {
-                console.log(`[Sec] 溅射触发: 中心[${target.name()}] 范围[${range}] 溅射目标数[${neighbors.length}]`);
+                console.log(`[Sec] 溅射判定: 目标[${target.name()}] 范围[${range}] 命中[${neighbors.length}]个邻居`);
+            } else {
+                console.log(`[Sec] 溅射判定: 目标[${target.name()}] 范围[${range}] 周围没有活着的队友`);
             }
 
             neighbors.forEach(n => {
-                const splashDmg = Math.floor(actualDamage * rate);
+                let splashDmg = 0;
+
+                // 【智能解析模式】
+                // 1. 如果是纯数字且很小 (<=5)，视为【比例模式】 (例如 0.5)
+                // 2. 如果包含运算符号、a.、b.，或者数字很大，视为【公式/固定值模式】
+                if (!isNaN(param1) && !/[ab]\.|v\[/.test(param1) && parseFloat(param1) <= 5.0) {
+                    const rate = parseFloat(param1);
+                    splashDmg = Math.floor(actualDamage * rate);
+                    console.log(`[Sec] -> 触发比例溅射 (${rate * 100}%)，伤害: ${splashDmg}`);
+                } else {
+                    try {
+                        // 公式环境: a=使用者, b=被溅射者, d=原伤害, origin=原目标
+                        const a = subject;
+                        const b = n;
+                        const origin = target;
+                        const d = actualDamage;
+                        const v = $gameVariables._data;
+                        splashDmg = Math.floor(eval(param1));
+                        console.log(`[Sec] -> 触发公式溅射 "${param1}"，伤害: ${splashDmg}`);
+                    } catch(e) {
+                        console.error("[Sec] 溅射公式解析错误:", e);
+                    }
+                }
+
                 if (splashDmg > 0) {
-                    // 1. 扣血 (数据)
                     n.gainHp(-splashDmg);
-                    
-                    // 2. 【核心修复】写入 Result (UI回执)
-                    // 如果不写这一步，startDamagePopup 会看到 hpDamage=0，所以不弹字
+                    // 强制 UI 显示
                     n.result().hpDamage = splashDmg;
                     n.result().hpAffected = true;
-
-                    // 3. 触发视觉
-                    n.startDamagePopup();  // 现在它能读到 hpDamage 了
-                    n.performDamage();     // 播放受击动画
+                    n.startDamagePopup();
+                    n.performDamage();
                     if (n.isDead()) n.performCollapse();
                 }
             });
@@ -317,10 +336,8 @@
                     if (bonusDmg > 0) {
                         setTimeout(() => {
                             target.gainHp(-bonusDmg);
-                            // 【修复】写入UI结果
                             target.result().hpDamage = bonusDmg;
                             target.result().hpAffected = true;
-                            
                             target.startDamagePopup();
                             target.performDamage();
                             if (target.isDead()) target.performCollapse();
@@ -337,10 +354,8 @@
             const healAmount = Math.floor(actualDamage * rate);
             if (healAmount > 0 && subject.isAlive()) {
                 subject.gainHp(healAmount);
-                // 【修复】写入UI结果 (负数代表治疗)
                 subject.result().hpDamage = -healAmount; 
                 subject.result().hpAffected = true;
-
                 subject.startDamagePopup();
             }
         }
