@@ -80,6 +80,34 @@
     const pluginName = "BattleSystemInstance";
 
     // ======================================================================
+    // 【新增】辅助函数：获取战斗者所有的备注内容 (角色+职业+所有装备)
+    // ======================================================================
+    function _Sec_GetBattlerNotes(battler) {
+        let notes = "";
+        if (battler.isActor()) {
+            // 1. 角色本身备注
+            notes += (battler.actor().note || "") + "\n";
+            // 2. 职业备注
+            if (battler.currentClass()) {
+                notes += (battler.currentClass().note || "") + "\n";
+            }
+            // 3. 所有装备备注 (武器 + 防具)
+            battler.equips().forEach(item => {
+                if (item) {
+                    notes += (item.note || "") + "\n";
+                }
+            });
+        } else if (battler.isEnemy()) {
+            // 敌人备注
+            const enemy = battler.enemy();
+            if (enemy) {
+                notes += (enemy.note || "") + "\n";
+            }
+        }
+        return notes;
+    }
+
+    // ======================================================================
     // 1. 全局数据存储
     // ======================================================================
     const _Sec_AccumulatedDamage = new Map();
@@ -88,7 +116,7 @@
 
 
     // ======================================================================
-    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (v2.9.2 公式增强版)
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (v2.9.6 装备兼容版)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
@@ -104,14 +132,15 @@
         const actualDamage = target.result().hpDamage; 
 
         // ------------------------------------------------------------------
-        // 2.1 【模块 A】 被动机制
+        // 2.1 【模块 A】 被动机制 (已升级：读取装备备注)
         // ------------------------------------------------------------------
         
-        // --- A1. 普攻特效 ---
-        if (subject && subject.isActor() && this.isAttack()) {
-            const classData = subject.currentClass();
-            if (classData && classData.note) {
-                const matches = classData.note.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
+        // --- A1. 攻击特效 (Attack) ---
+        // 只要是攻击，就读取“凶手”身上的所有备注(含装备)
+        if (subject && this.isAttack()) {
+            const noteData = _Sec_GetBattlerNotes(subject);
+            if (noteData) {
+                const matches = noteData.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
                     const formula = match[1].trim();
                     try {
@@ -124,13 +153,14 @@
             }
         }
 
-        // --- A2. 受击特效 ---
-        if (target && target.isActor()) {
+        // --- A2. 受击特效 (Hit) ---
+        // 只要受击，就读取“受害者”身上的所有备注(含装备)
+        if (target) {
             const result = target.result();
             if (result.isHit() || actualDamage > 0) {
-                const classData = target.currentClass();
-                if (classData && classData.note) {
-                    const matches = classData.note.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
+                const noteData = _Sec_GetBattlerNotes(target);
+                if (noteData) {
+                    const matches = noteData.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
                     for (const match of matches) {
                         const formula = match[1].trim();
                         try {
@@ -144,17 +174,10 @@
             }
         }
 
-        // --- A3. 亡语 ---
+        // --- A3. 亡语 (Dead) ---
         if (target && !wasDead && target.isDead()) {
-             let noteData = "";
-             if (target.isActor()) {
-                 const actorNote = target.actor().note || "";
-                 const classNote = (target.currentClass() && target.currentClass().note) || "";
-                 noteData = actorNote + "\n" + classNote;
-             } else if (target.isEnemy()) {
-                 const enemyData = target.enemy();
-                 if (enemyData) noteData = enemyData.note;
-             }
+             // 读取死者身上的所有备注(含装备)
+             const noteData = _Sec_GetBattlerNotes(target);
 
              if (noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Dead\s*[,，]\s*([^>]+)>/gi);
@@ -180,7 +203,7 @@
         if (!item) return;
 
         // ------------------------------------------------------------------
-        // 2.2 【模块 B】 技能主动机制
+        // 2.2 【模块 B】 技能主动机制 (保持不变，已包含之前的所有修复)
         // ------------------------------------------------------------------
         const note = item.note;
         
@@ -264,10 +287,9 @@
         }
 
         // --- B3. 溅射伤害 (智能全兼容版) ---
-        // 现在的正则可以匹配公式了： <溅射伤害: a.atk * 0.5, 1> 或 <溅射伤害: 0.5, 1>
         const splashMatch = note.match(/<溅射伤害[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*>/);
         if (splashMatch && actualDamage > 0) {
-            const param1 = splashMatch[1].trim(); // 可能是 "0.5" 也可能是 "a.atk * 1.5"
+            const param1 = splashMatch[1].trim(); 
             const range = parseInt(splashMatch[2]);
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
@@ -280,7 +302,6 @@
                        Math.abs(idx - centerIndex) <= range;
             });
             
-            // 调试日志：如果控制台没显示这句话，说明没找到邻居
             if (neighbors.length > 0) {
                 console.log(`[Sec] 溅射判定: 目标[${target.name()}] 范围[${range}] 命中[${neighbors.length}]个邻居`);
             } else {
@@ -289,32 +310,20 @@
 
             neighbors.forEach(n => {
                 let splashDmg = 0;
-
-                // 【智能解析模式】
-                // 1. 如果是纯数字且很小 (<=5)，视为【比例模式】 (例如 0.5)
-                // 2. 如果包含运算符号、a.、b.，或者数字很大，视为【公式/固定值模式】
                 if (!isNaN(param1) && !/[ab]\.|v\[/.test(param1) && parseFloat(param1) <= 5.0) {
                     const rate = parseFloat(param1);
                     splashDmg = Math.floor(actualDamage * rate);
                     console.log(`[Sec] -> 触发比例溅射 (${rate * 100}%)，伤害: ${splashDmg}`);
                 } else {
                     try {
-                        // 公式环境: a=使用者, b=被溅射者, d=原伤害, origin=原目标
-                        const a = subject;
-                        const b = n;
-                        const origin = target;
-                        const d = actualDamage;
-                        const v = $gameVariables._data;
+                        const a = subject, b = n, origin = target, d = actualDamage, v = $gameVariables._data;
                         splashDmg = Math.floor(eval(param1));
                         console.log(`[Sec] -> 触发公式溅射 "${param1}"，伤害: ${splashDmg}`);
-                    } catch(e) {
-                        console.error("[Sec] 溅射公式解析错误:", e);
-                    }
+                    } catch(e) { console.error("[Sec] 溅射公式解析错误:", e); }
                 }
 
                 if (splashDmg > 0) {
                     n.gainHp(-splashDmg);
-                    // 强制 UI 显示
                     n.result().hpDamage = splashDmg;
                     n.result().hpAffected = true;
                     n.startDamagePopup();
@@ -645,19 +654,13 @@
     };
 
     // ======================================================================
-    // 修复后的协战与识破逻辑
-    // 请替换原有的 checkSynergy 和 checkReaction 函数
+    // 协战与识破 (v2.9.6 装备兼容版)
     // ======================================================================
 
-    // ======================================================================
-    // 协战检查 (v2.9.3 严格判定修复版)
-    // 请替换原有的 BattleManager.checkSynergy
-    // ======================================================================
+    // 协战检查
     BattleManager.checkSynergy = function(observer, source, action) {
-        // 读取备注
-        let note = "";
-        if (observer.isActor()) { const c = observer.currentClass(); if(c) note = c.note; }
-        else { const e = observer.enemy(); if(e) note = e.note; }
+        // 读取该角色身上的所有备注(含装备)
+        const note = _Sec_GetBattlerNotes(observer);
 
         const matches = note.matchAll(/<队友协战[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
         for (const match of matches) {
@@ -667,28 +670,22 @@
             
             let matchType = false;
 
-            // --- 判定逻辑优化 ---
+            // --- 判定逻辑优化 (排除防御) ---
             if (type === 'any') {
-                // Any 模式：不排除防御，任何行为都能触发
-                matchType = true;
+                if (!action.isGuard()) matchType = true;
             }
             else if (type === 'attack') {
-                // Attack 模式：必须是攻击，且【绝不能】是防御
                 if (action.isAttack() && !action.isGuard()) matchType = true;
             }
             else if (type === 'skill') {
-                // Skill 模式：必须是魔法/特技，排除普攻和防御
                 if (action.isSkill() && !action.isAttack() && !action.isGuard()) matchType = true;
             }
             else if (type === 'support') {
-                // Support 模式：友方目标或恢复类，且【绝不能】是防御
-                // (原版中防御是对自己使用，isForFriend判定为真，所以这里必须排除)
                 if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
             }
 
             // --- 触发执行 ---
             if (matchType && Math.random() * 100 < chance) {
-                // 智能锁敌逻辑
                 let targetIndex = -2;
                 if (action.isForOne() && this._targets && this._targets.length > 0) {
                     targetIndex = this._targets[0].index();
@@ -697,9 +694,7 @@
                     if (randomTarget) targetIndex = randomTarget.index();
                 }
 
-                // 调试日志：让你看清楚到底是哪个动作触发的
-                console.log(`[Sec] 协战判定: 源动作[${action.item().name}] (IsAttack:${action.isAttack()} IsGuard:${action.isGuard()}) -> 触发类型[${type}]`);
-                console.log(`[Sec] -> ${observer.name()} 响应协战，释放技能[${skillId}]`);
+                console.log(`[Sec] 协战判定(装备兼容): ${observer.name()} 响应协战`);
                 
                 observer.forceAction(skillId, targetIndex);
                 this.forceAction(observer);
@@ -708,17 +703,11 @@
         }
     };
 
-    // ======================================================================
-    // 识破检查 (v2.9.4 修复版：强制执行 + 智能反击锁敌)
-    // 请替换原有的 BattleManager.checkReaction
-    // ======================================================================
+    // 识破检查
     BattleManager.checkReaction = function(observer, source, action) {
-        // 1. 读取备注数据
-        let note = "";
-        if (observer.isActor()) { const c = observer.currentClass(); if(c) note = c.note; }
-        else { const e = observer.enemy(); if(e) note = e.note; }
+        // 读取该角色身上的所有备注(含装备)
+        const note = _Sec_GetBattlerNotes(observer);
 
-        // 2. 遍历所有识破标签
         const matches = note.matchAll(/<敌方识破[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
         for (const match of matches) {
             const type = match[1].trim().toLowerCase();
@@ -726,50 +715,31 @@
             const skillId = parseInt(match[3]);
             
             let matchType = false;
-
-            // --- 判定逻辑 (排除防御 Guard) ---
             if (type === 'any') {
-                // Any: 只要玩家动了就触发 (排除防御)
                 if (!action.isGuard()) matchType = true;
             }
             else if (type === 'support') {
-                // Support: 玩家使用支援/回血时触发 (排除防御)
                 if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
             }
             else if (type === 'attack') {
-                // Attack: 玩家攻击时触发 (排除防御)
-                // 注意: action.isForOpponent() 确保是对敌人(也就是对识破者一方)的动作
                 if (action.isAttack() && action.isForOpponent() && !action.isGuard()) matchType = true;
             }
 
-            // --- 触发执行 ---
             if (matchType && Math.random() * 100 < chance) {
                 const reactionSkill = $dataSkills[skillId];
-                
-                // --- 智能目标锁定 ---
                 let targetIndex = -1;
                 if (reactionSkill) {
-                    // 判断反击技能的类型
-                    // 范围 1~6 通常是攻击敌方 (对玩家来说是攻击敌人，对敌人来说是攻击玩家)
-                    // 所以如果敌人用攻击技能，目标应该是 source (玩家)
                     if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) {
                         targetIndex = source.index();
-                    } 
-                    // 范围 7~11 通常是友方/自己 (敌人给自己加Buff)
-                    else {
+                    } else {
                         targetIndex = observer.index();
                     }
                 }
 
-                console.log(`[Sec] 识破触发: 玩家[${source.name()}]动作 -> ${observer.name()} 反制技能[${skillId}] 目标[${targetIndex}]`);
-
-                // 设置反击行动
+                console.log(`[Sec] 识破触发(装备兼容): ${observer.name()} 反制`);
                 observer.forceAction(skillId, targetIndex);
-                
-                // 【关键修复】强制战斗管理器插入此行动
                 this.forceAction(observer);
-                
-                return; // 一次只触发一个反击
+                return;
             }
         }
     };
