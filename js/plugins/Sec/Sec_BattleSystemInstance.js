@@ -1,75 +1,113 @@
 /*:
  * @target MZ
- * @plugindesc [重构版v2.9] 战斗系统实例插件 - 正则兼容与功能修复版
+ * @plugindesc [重构版v3.5.3] 战斗系统实例插件 - 修正版
  * @author Secmon (Refactored by Gemini)
- * @version 2.9.0
+ * @version 3.5.3
+ *
+ * @param ---Default Animations---
+ * @text [默认动画设置]
+ * @default
+ *
+ * @param DefAnimHit
+ * @parent ---Default Animations---
+ * @text 默认打击动画ID
+ * @desc 伤害类效果使用的默认动画。
+ * @type animation
+ * @default 1
+ *
+ * @param DefAnimHeal
+ * @parent ---Default Animations---
+ * @text 默认治疗动画ID
+ * @desc 恢复类效果使用的默认动画。
+ * @type animation
+ * @default 46
+ *
+ * @param DefAnimBuff
+ * @parent ---Default Animations---
+ * @text 默认Buff动画ID
+ * @desc 增益/守护类效果使用的默认动画。
+ * @type animation
+ * @default 52
+ *
+ * @param ---Time Settings---
+ * @text [时间轴参数设置]
+ * @default
+ *
+ * @param GuardianDelay
+ * @parent ---Time Settings---
+ * @text 守护光环间隔(ms)
+ * @desc 守护光环触发时的演出间隔。建议 150-300。
+ * @type number
+ * @default 200
+ *
+ * @param ChargeDelay
+ * @parent ---Time Settings---
+ * @text 蓄力释放延迟(ms)
+ * @desc 蓄力攻击追加伤害的延迟时间。建议 300-500。
+ * @type number
+ * @default 400
+ *
+ * @param SynergyDelay
+ * @parent ---Time Settings---
+ * @text 队友协战延迟(ms)
+ * @desc 队友响应协战前的等待时间。建议 100-300。
+ * @type number
+ * @default 200
+ *
+ * @param StateInteractDelay
+ * @parent ---Time Settings---
+ * @text 状态交互延迟(ms)
+ * @desc 状态交互触发伤害/治疗的延迟时间。建议 200。
+ * @type number
+ * @default 200
+ *
+ * @param FieldResonanceDelay
+ * @parent ---Time Settings---
+ * @text 力场共鸣延迟(ms)
+ * @desc 力场扩散或聚集时的延迟时间。建议 200-300。
+ * @type number
+ * @default 200
+ *
+ * @param RicochetBaseDelay
+ * @parent ---Time Settings---
+ * @text 闪电链初始间隔(ms)
+ * @desc 弹射/闪电链第一次弹跳的间隔时间。
+ * @type number
+ * @default 200
+ *
+ * @param RicochetDecay
+ * @parent ---Time Settings---
+ * @text 闪电链延迟递减(ms)
+ * @desc 每次弹跳减少的间隔时间（越弹越快）。
+ * @type number
+ * @default 30
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v2.9 (修复版) ★
+ * ★ 插件功能手册 v3.5.3 (修正版) ★
  * ============================================================================
  * 【更新说明】
- * v2.9: 
- * 1. 修复了溅射伤害因标点/空格问题无法触发的Bug。
- * 2. 现在所有标签均支持中文标点(：，)和英文标点(:, )。
- * 3. 补全了v2.6版本缺失的“协战/识破”监听模块。
- *
- * 【标签写法宽容度提升】
- * 以下写法均可识别：
- * <溅射伤害:0.5,1>      (紧凑)
- * <溅射伤害: 0.5, 1>    (标准)
- * <溅射伤害：0.5，1>    (中文标点)
+ * v3.5.3: 
+ * 1. [修复] 彻底修复了战斗消息屏蔽失效的问题（移除了错误的恢复逻辑）。
+ * 2. [调整] “受击蓄力”不再支持动画参数。
+ * 3. [调整] “守护光环”的动画现在正确播放于被守护的队友身上。
  *
  * ============================================================================
- * 一、被动触发模块 (Passives)
- * 位置：职业(Class) 或 敌人(Enemy) 备注
+ * 一、标签写法速查
  * ----------------------------------------------------------------------------
- * 1. 普攻/受击特效
- * <战斗触发:Attack, a.gainMp(10)>
- * <战斗触发:Hit, a.gainTp(10)>
+ * 1. 守护光环 (动画播在队友身上)
+ * <守护光环: 状态ID, 比例, 公式, 动画ID>
+ * 例: <守护光环: 60, 0.8, damage, 52>
  *
- * 2. 亡语机制(目前无效)
- * <战斗触发:Dead, b.addState(10)>
+ * 2. 蓄力释放 (动画播在敌人身上)
+ * <蓄力释放: 状态ID, 公式, 动画ID>
  *
- * ============================================================================
- * 二、技能主动模块 (Active Skills)
- * 位置：技能(Skill) 备注
- * ----------------------------------------------------------------------------
- * 1. 溅射伤害: <溅射伤害: 比例, 范围>(目前无效)
- * 例: <溅射伤害: 0.5, 1>
+ * 3. 受击蓄力 (无动画)
+ * <受击蓄力: 状态ID>
  *
- * 2. 斩杀追击: <斩杀追击: 阈值%, 公式>
- * 例: <斩杀追击: 30, 2000>
- *
- * 3. 技能吸血: <技能吸血: 比例>
- * 例: <技能吸血: 0.2>
- *
- * 4. 状态交互: <状态交互: 状态ID, 公式, 移除?, 范围>
- * 例: <状态交互: 10, a.mat*3, true, Target>
- *
- * 5. 力场共鸣: <力场共鸣: 状态ID, 模式, 公式, 移除?>
- * 例: <力场共鸣: 20, Spread, a.mat*2, true>
- *
- * 6. 伤害转移: <伤害转移: 状态ID, 比例%, 转移公式, 恢复公式>
- * 例: <伤害转移: 100, 100, d*0.5, d>
- *
- * 7. 累计反击: <累计反击: 状态ID, 属性, 值, 反击公式>
- * 例: <累计反击: 110, def, 200, d*3>
- *
- * 8. 弹射伤害: <弹射伤害: 初始, 递推, 次数, 上限, 重复?, 模式>
- * 例: <弹射伤害: 3000, damage*0.8, 3, 0, false, Random>
- *
- * ============================================================================
- * 三、全局行动监听模块 (Action Observer)
- * 位置：职业(Class) 或 敌人(Enemy) 备注
- * ----------------------------------------------------------------------------
- * 1. 队友协战: <队友协战: 触发类型, 概率%, 技能ID>(目前无效)
- * 类型: Attack, Skill, Support, Any
- * 例: <队友协战: Attack, 30, 10>
- *
- * 2. 敌方识破: <敌方识破: 触发类型, 概率%, 技能ID>(目前无效)
- * 类型: Support, Attack, Any
- * 例: <敌方识破: Support, 100, 30>
+ * 4. 溅射/闪电链 (支持动画)
+ * <溅射伤害: 公式, 范围, 动画ID>
+ * <弹射伤害: ..., 模式, 动画ID>
  *
  * ============================================================================
  */
@@ -77,54 +115,114 @@
 (() => {
     'use strict';
 
-    const pluginName = "BattleSystemInstance";
+    // ======================================================================
+    // 0. 读取参数 (Parameters)
+    // ======================================================================
+    const pluginName = "Sec_BattleSystemInstance";
+    const parameters = PluginManager.parameters(pluginName);
+    
+    const Sec_Params = {
+        guardianDelay: Number(parameters['GuardianDelay'] || 200),
+        chargeDelay: Number(parameters['ChargeDelay'] || 400),
+        synergyDelay: Number(parameters['SynergyDelay'] || 200),
+        stateInteractDelay: Number(parameters['StateInteractDelay'] || 200),
+        fieldDelay: Number(parameters['FieldResonanceDelay'] || 200),
+        ricochetBase: Number(parameters['RicochetBaseDelay'] || 200),
+        ricochetDecay: Number(parameters['RicochetDecay'] || 30)
+    };
+
+    const DEF_ANIM = {
+        HIT: Number(parameters['DefAnimHit'] || 1),
+        HEAL: Number(parameters['DefAnimHeal'] || 46),
+        BUFF: Number(parameters['DefAnimBuff'] || 52),
+        GUARD: Number(parameters['DefAnimBuff'] || 52)
+    };
 
     // ======================================================================
-    // 【新增】辅助函数：获取战斗者所有的备注内容 (角色+职业+所有装备)
+    // 1. 辅助函数
     // ======================================================================
     function _Sec_GetBattlerNotes(battler) {
         let notes = "";
         if (battler.isActor()) {
-            // 1. 角色本身备注
             notes += (battler.actor().note || "") + "\n";
-            // 2. 职业备注
-            if (battler.currentClass()) {
-                notes += (battler.currentClass().note || "") + "\n";
-            }
-            // 3. 所有装备备注 (武器 + 防具)
-            battler.equips().forEach(item => {
-                if (item) {
-                    notes += (item.note || "") + "\n";
-                }
-            });
+            if (battler.currentClass()) notes += (battler.currentClass().note || "") + "\n";
+            battler.equips().forEach(item => { if (item) notes += (item.note || "") + "\n"; });
         } else if (battler.isEnemy()) {
-            // 敌人备注
             const enemy = battler.enemy();
-            if (enemy) {
-                notes += (enemy.note || "") + "\n";
-            }
+            if (enemy) notes += (enemy.note || "") + "\n";
         }
+        battler.states().forEach(state => {
+            if (state) notes += (state.note || "") + "\n";
+        });
         return notes;
     }
 
-    // ======================================================================
-    // 1. 全局数据存储
-    // ======================================================================
-    const _Sec_AccumulatedDamage = new Map();
-    const _Sec_TransferMarker = new Map();
+    function _Sec_ParseParamAndAnim(str, defaultAnimId = 0) {
+        const regex = /^(.*?)(?:[,，]\s*(\d+))?$/s;
+        const match = str.match(regex);
+        if (match) {
+            return {
+                content: match[1].trim(),
+                animId: match[2] ? parseInt(match[2]) : defaultAnimId
+            };
+        }
+        return { content: str, animId: defaultAnimId };
+    }
 
+    function _Sec_PlayAnim(target, animId) {
+        if (target && animId > 0) {
+            if ($gameTemp && $gameTemp.requestAnimation) {
+                $gameTemp.requestAnimation([target], animId);
+            }
+        }
+    }
 
+    // --- 日志净化核心 (Log Purifier) ---
+    // 原理：一旦打上标记，Window_BattleLog 就会闭嘴。标记只在 startAction 时清除。
+    
+    const _Window_BattleLog_displayHpDamage = Window_BattleLog.prototype.displayHpDamage;
+    Window_BattleLog.prototype.displayHpDamage = function(target) {
+        if (target._ignoreDamageLog) return; 
+        _Window_BattleLog_displayHpDamage.call(this, target);
+    };
+    const _Window_BattleLog_displayMpDamage = Window_BattleLog.prototype.displayMpDamage;
+    Window_BattleLog.prototype.displayMpDamage = function(target) {
+        if (target._ignoreMpLog) return; 
+        _Window_BattleLog_displayMpDamage.call(this, target);
+    };
+    const _Window_BattleLog_displayTpDamage = Window_BattleLog.prototype.displayTpDamage;
+    Window_BattleLog.prototype.displayTpDamage = function(target) {
+        if (target._ignoreMpLog) return; 
+        _Window_BattleLog_displayTpDamage.call(this, target);
+    };
+
+    // 每个新动作开始前，清除上一轮的静音标记
+    const _BattleManager_startAction = BattleManager.startAction;
+    BattleManager.startAction = function() {
+        const all = $gameParty.members().concat($gameTroop.members());
+        all.forEach(b => {
+            b._ignoreMpLog = false;
+            b._ignoreDamageLog = false;
+        });
+        _BattleManager_startAction.call(this);
+    };
+
+    // 开启静音 (注意：没有 Restore 函数，标记持续到动作结束)
+    function _Sec_SuppressLog(battler) {
+        if (!battler) return;
+        battler._ignoreDamageLog = true;
+        battler._ignoreMpLog = true;
+    }
 
     // ======================================================================
-    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (v2.9.6 装备兼容版)
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         
-        // 记录受击前的死亡状态
         const wasDead = target.isDead();
 
-        // 执行原版逻辑
+        // 1. 执行原版逻辑
         _Game_Action_executeDamage.call(this, target, value);
 
         const subject = this.subject();
@@ -132,60 +230,171 @@
         const actualDamage = target.result().hpDamage; 
 
         // ------------------------------------------------------------------
-        // 2.1 【模块 A】 被动机制 (已升级：读取装备备注)
+        // 【模块 A】 攻击/行动触发
         // ------------------------------------------------------------------
-        
-        // --- A1. 攻击特效 (Attack) ---
-        // 只要是攻击，就读取“凶手”身上的所有备注(含装备)
-        if (subject && this.isAttack()) {
+        if (subject && subject.isAlive()) {
             const noteData = _Sec_GetBattlerNotes(subject);
-            if (noteData) {
+
+            // --- A1. 攻击特效 (无动画) ---
+            if (this.isAttack() && noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
-                    const formula = match[1].trim();
                     try {
+                        const formula = match[1].trim();
                         const a = subject, b = target, v = $gameVariables._data;
-                        if (formula.includes('gainMp')) subject._ignoreMpLog = true;
+                        _Sec_SuppressLog(subject); _Sec_SuppressLog(target);
                         eval(formula);
-                        subject._ignoreMpLog = false;
                     } catch (e) { console.error(`[Sec] A1 Error`, e); }
                 }
             }
-        }
 
-        // --- A2. 受击特效 (Hit) ---
-        // 只要受击，就读取“受害者”身上的所有备注(含装备)
-        if (target) {
-            const result = target.result();
-            if (result.isHit() || actualDamage > 0) {
-                const noteData = _Sec_GetBattlerNotes(target);
-                if (noteData) {
-                    const matches = noteData.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
-                    for (const match of matches) {
-                        const formula = match[1].trim();
+            // --- A2. 蓄力释放 (动画在敌人身上) ---
+            const isHpDamageType = item.damage && (item.damage.type === 1 || item.damage.type === 5);
+            if ((this.isAttack() || this.isSkill()) && isHpDamageType && noteData) {
+                const releaseMatches = noteData.matchAll(/<蓄力释放[:：]\s*(\d+)\s*[,，]\s*([^>]+)>/gi);
+                for (const match of releaseMatches) {
+                    const stateId = parseInt(match[1]);
+                    const rawContent = match[2];
+                    
+                    if (subject.isStateAffected(stateId) && subject._secStoredDmg > 0) {
                         try {
-                            const a = target, b = subject, v = $gameVariables._data;
-                            if (formula.includes('gainMp')) target._ignoreMpLog = true;
-                            eval(formula);
-                            target._ignoreMpLog = false;
-                        } catch (e) { console.error(`[Sec] A2 Error`, e); }
+                            const parsed = _Sec_ParseParamAndAnim(rawContent, DEF_ANIM.HIT);
+                            const formula = parsed.content;
+                            const animId = parsed.animId;
+
+                            const d = subject._secStoredDmg; 
+                            const a = subject, b = target, v = $gameVariables._data;
+                            const bonusDmg = Math.floor(eval(formula));
+                            
+                            if (bonusDmg > 0) {
+                                console.log(`[Sec] 蓄力释放: 伤害[${bonusDmg}]`);
+                                setTimeout(() => {
+                                    if (target && (target.isAlive() || !target._collapsed)) {
+                                        _Sec_SuppressLog(target);
+                                        target.gainHp(-bonusDmg);
+                                        
+                                        target.result().hpDamage = bonusDmg;
+                                        target.result().hpAffected = true;
+                                        target.startDamagePopup();
+                                        target.performDamage();
+                                        _Sec_PlayAnim(target, animId); 
+                                        if (target.isDead()) target.performCollapse();
+                                    }
+                                }, Sec_Params.chargeDelay); 
+                            }
+                            subject._secStoredDmg = 0;
+                            subject.removeState(stateId);
+                        } catch(e) { console.error("[Sec] 蓄力释放计算错误", e); }
                     }
                 }
             }
         }
 
-        // --- A3. 亡语 (Dead) ---
-        if (target && !wasDead && target.isDead()) {
-             // 读取死者身上的所有备注(含装备)
-             const noteData = _Sec_GetBattlerNotes(target);
+        // ------------------------------------------------------------------
+        // 【模块 B】 受击/被动触发
+        // ------------------------------------------------------------------
+        if (target && target.result().isHit()) { 
+            const targetNote = _Sec_GetBattlerNotes(target);
 
+            // --- B1. 受击特效 (无动画) ---
+            if (targetNote) {
+                const matches = targetNote.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
+                for (const match of matches) {
+                    try {
+                        const formula = match[1].trim();
+                        const a = target, b = subject, v = $gameVariables._data;
+                        _Sec_SuppressLog(a); _Sec_SuppressLog(b);
+                        eval(formula);
+                    } catch (e) { console.error(`[Sec] B1 Error`, e); }
+                }
+            }
+
+            // --- B2. 受击蓄力 (纯逻辑，不加动画) ---
+            // <受击蓄力: ID>
+            if (actualDamage > 0 && targetNote) {
+                const chargeMatches = targetNote.matchAll(/<受击蓄力[:：]\s*(\d+)\s*>/gi);
+                for (const match of chargeMatches) {
+                    const stateId = parseInt(match[1]);
+                    if (target.isStateAffected(stateId)) {
+                        target._secStoredDmg = (target._secStoredDmg || 0) + actualDamage;
+                    }
+                }
+            }
+
+            // --- B3. 守护光环 (动画修正：播在队友身上) ---
+            if (actualDamage > 0) {
+                const friends = target.friendsUnit().members();
+                for (const guardian of friends) {
+                    if (guardian === target || !guardian.isAlive()) continue;
+
+                    const gNote = _Sec_GetBattlerNotes(guardian);
+                    const guardMatches = gNote.matchAll(/<守护光环[:：]\s*(\d+)\s*[,，]\s*([\d\.]+)\s*[,，]\s*([^>]+)>/gi);
+                    
+                    for (const match of guardMatches) {
+                        const stateId = parseInt(match[1]);
+                        const rate = parseFloat(match[2]);
+                        const rawContent = match[3];
+
+                        if (guardian.isStateAffected(stateId)) {
+                            const parsed = _Sec_ParseParamAndAnim(rawContent, DEF_ANIM.GUARD);
+                            const formula = parsed.content;
+                            const animId = parsed.animId;
+
+                            const damage = actualDamage; 
+                            let transferAmount = Math.floor(damage * rate);
+                            
+                            if (transferAmount > 0) {
+                                let guardianDmg = transferAmount;
+                                try { guardianDmg = Math.floor(eval(formula)); } catch(e) {}
+
+                                setTimeout(() => {
+                                    // 阶段1: 队友回血 + 播放光环动画 (目标是队友)
+                                    if (target) {
+                                        _Sec_SuppressLog(target); 
+                                        target.gainHp(transferAmount);
+                                        
+                                        target.result().hpDamage = -transferAmount;
+                                        target.result().hpAffected = true;
+                                        target.startDamagePopup();
+                                        target.performDamage(); 
+                                        
+                                        _Sec_PlayAnim(target, animId); // 修正：在队友身上播放特效
+                                    }
+
+                                    // 阶段2: 守护者扣血
+                                    setTimeout(() => {
+                                        if (guardian && guardian.isAlive()) {
+                                            _Sec_SuppressLog(guardian); 
+                                            guardian.gainHp(-guardianDmg);
+                                            
+                                            guardian.result().hpDamage = guardianDmg;
+                                            guardian.result().hpAffected = true;
+                                            guardian.startDamagePopup();
+                                            guardian.performDamage();
+                                            
+                                            if (guardian.isDead()) guardian.performCollapse();
+                                        }
+                                    }, Sec_Params.guardianDelay); 
+
+                                }, Sec_Params.guardianDelay); 
+                            }
+                            break; 
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- A3. 亡语 (无动画) ---
+        if (target && !wasDead && target.isDead()) {
+             const noteData = _Sec_GetBattlerNotes(target);
              if (noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Dead\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
-                    const formula = match[1].trim();
                     try {
+                        const formula = match[1].trim();
                         const a = target, b = subject, v = $gameVariables._data, dmg = actualDamage;
-                        console.log(`[Sec] 亡语触发: ${target.name()} -> ${subject.name()}`);
+                        _Sec_SuppressLog(a); _Sec_SuppressLog(b);
                         eval(formula);
 
                         if (b && b.isAlive !== undefined) {
@@ -203,17 +412,25 @@
         if (!item) return;
 
         // ------------------------------------------------------------------
-        // 2.2 【模块 B】 技能主动机制 (保持不变，已包含之前的所有修复)
+        // 【模块 C】 技能特效 (保持支持动画)
         // ------------------------------------------------------------------
         const note = item.note;
         
-        // --- B1. 状态交互 ---
+        // --- C1. 状态交互 ---
         const stateInteractMatches = note.matchAll(/<状态交互[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/g);
         for (const match of stateInteractMatches) {
             const stateId = parseInt(match[1]);
             const formula = match[2].trim();
             const removeState = match[3].trim().toLowerCase() === 'true';
-            const range = match[4].trim().toLowerCase();
+            const rawRange = match[4];
+
+            let defaultAnim = DEF_ANIM.HIT;
+            const rangeLower = rawRange.split(/[,，]/)[0].trim().toLowerCase();
+            if (rangeLower === 'allallies' || rangeLower === 'self') defaultAnim = DEF_ANIM.BUFF;
+
+            const parsed = _Sec_ParseParamAndAnim(rawRange, defaultAnim);
+            const range = parsed.content.toLowerCase();
+            const animId = parsed.animId;
 
             let targets = [];
             if (range === 'target') targets = [target];
@@ -222,29 +439,38 @@
 
             targets.forEach(t => {
                 if (t.isAlive() && t.isStateAffected(stateId)) {
-                    try {
-                        const a = subject, b = t, v = $gameVariables._data;
-                        const val = Math.floor(eval(formula));
-                        if (val !== 0) { 
-                            t.gainHp(-val);
-                            t.result().hpDamage = val;
-                            t.result().hpAffected = true;
-                            t.startDamagePopup();
-                            if (val > 0) t.performDamage();
-                        }
-                        if (removeState) t.removeState(stateId);
-                    } catch (e) { console.error(`[Sec] B1 Error`, e); }
+                    setTimeout(() => {
+                        try {
+                            const a = subject, b = t, v = $gameVariables._data;
+                            const val = Math.floor(eval(formula));
+                            if (val !== 0) { 
+                                _Sec_SuppressLog(t); 
+                                t.gainHp(-val); 
+                                
+                                t.result().hpDamage = val;
+                                t.result().hpAffected = true;
+                                t.startDamagePopup();
+                                if (val > 0) t.performDamage();
+                                _Sec_PlayAnim(t, animId); 
+                            }
+                            if (removeState) t.removeState(stateId);
+                        } catch (e) { console.error(`[Sec] C1 Error`, e); }
+                    }, Sec_Params.stateInteractDelay);
                 }
             });
         }
 
-        // --- B2. 力场共鸣 ---
+        // --- C2. 力场共鸣 ---
         const fieldResMatches = note.matchAll(/<力场共鸣[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/g);
         for (const match of fieldResMatches) {
             const stateId = parseInt(match[1]);
             const mode = match[2].trim().toLowerCase();
             const formula = match[3].trim();
-            const removeState = match[4].trim().toLowerCase() === 'true';
+            const rawRemove = match[4];
+            
+            const parsed = _Sec_ParseParamAndAnim(rawRemove, DEF_ANIM.HIT);
+            const removeState = parsed.content.toLowerCase() === 'true';
+            const animId = parsed.animId;
 
             const allBattlers = $gameParty.members().concat($gameTroop.members());
             const affectedMembers = allBattlers.filter(m => m.isAlive() && m.isStateAffected(stateId));
@@ -256,412 +482,230 @@
                             const a = subject, b = m, v = $gameVariables._data;
                             const val = Math.floor(eval(formula));
                             if (val > 0) {
-                                m.gainHp(-val);
+                                _Sec_SuppressLog(m); 
+                                m.gainHp(-val); 
+                                
                                 m.result().hpDamage = val;
                                 m.result().hpAffected = true;
                                 m.startDamagePopup();
                                 m.performDamage(); 
+                                _Sec_PlayAnim(m, animId);
                                 if (m.isDead()) m.performCollapse();
                             }
                         } catch(e) {}
                     });
                     if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
-                }, 200);
+                }, Sec_Params.fieldDelay);
             } else if (mode === 'gather') {
-                const n = affectedMembers.length;
-                if (n > 0) {
-                    try {
-                        const a = subject, b = target, v = $gameVariables._data;
-                        const val = Math.floor(eval(formula));
-                        if (val > 0) {
-                            target.gainHp(-val);
-                            target.result().hpDamage = val;
-                            target.result().hpAffected = true;
-                            target.startDamagePopup();
-                            target.performDamage();
-                        }
-                        if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
-                    } catch(e) {}
-                }
+                setTimeout(() => {
+                    const n = affectedMembers.length;
+                    if (n > 0) {
+                        try {
+                            const a = subject, b = target, v = $gameVariables._data;
+                            const val = Math.floor(eval(formula));
+                            if (val > 0) {
+                                _Sec_SuppressLog(target); 
+                                target.gainHp(-val); 
+                                
+                                target.result().hpDamage = val;
+                                target.result().hpAffected = true;
+                                target.startDamagePopup();
+                                target.performDamage();
+                                _Sec_PlayAnim(target, animId);
+                            }
+                            if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
+                        } catch(e) {}
+                    }
+                }, Sec_Params.fieldDelay);
             }
         }
 
-        // --- B3. 溅射伤害 (智能全兼容版) ---
-        const splashMatch = note.match(/<溅射伤害[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*>/);
+        // --- C3. 溅射伤害 ---
+        const splashMatch = note.match(/<溅射伤害[:：]\s*([^,，]+)\s*[,，]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/);
         if (splashMatch && actualDamage > 0) {
             const param1 = splashMatch[1].trim(); 
             const range = parseInt(splashMatch[2]);
+            const animId = splashMatch[3] ? parseInt(splashMatch[3]) : DEF_ANIM.HIT; 
+
             const friends = target.friendsUnit(); 
             const centerIndex = target.index();
-            
             const neighbors = friends.members().filter(member => {
                 const idx = member.index();
-                return member !== target && 
-                       member.isAlive() && 
-                       member.isAppeared() && 
-                       Math.abs(idx - centerIndex) <= range;
+                return member !== target && member.isAlive() && member.isAppeared() && Math.abs(idx - centerIndex) <= range;
             });
             
-            if (neighbors.length > 0) {
-                console.log(`[Sec] 溅射判定: 目标[${target.name()}] 范围[${range}] 命中[${neighbors.length}]个邻居`);
-            } else {
-                console.log(`[Sec] 溅射判定: 目标[${target.name()}] 范围[${range}] 周围没有活着的队友`);
-            }
+            if (neighbors.length > 0) console.log(`[Sec] 溅射: ${neighbors.length}目标`);
 
             neighbors.forEach(n => {
                 let splashDmg = 0;
                 if (!isNaN(param1) && !/[ab]\.|v\[/.test(param1) && parseFloat(param1) <= 5.0) {
-                    const rate = parseFloat(param1);
-                    splashDmg = Math.floor(actualDamage * rate);
-                    console.log(`[Sec] -> 触发比例溅射 (${rate * 100}%)，伤害: ${splashDmg}`);
+                    splashDmg = Math.floor(actualDamage * parseFloat(param1));
                 } else {
                     try {
                         const a = subject, b = n, origin = target, d = actualDamage, v = $gameVariables._data;
                         splashDmg = Math.floor(eval(param1));
-                        console.log(`[Sec] -> 触发公式溅射 "${param1}"，伤害: ${splashDmg}`);
-                    } catch(e) { console.error("[Sec] 溅射公式解析错误:", e); }
+                    } catch(e) {}
                 }
 
                 if (splashDmg > 0) {
-                    n.gainHp(-splashDmg);
+                    _Sec_SuppressLog(n); 
+                    n.gainHp(-splashDmg); 
+                    
                     n.result().hpDamage = splashDmg;
                     n.result().hpAffected = true;
                     n.startDamagePopup();
                     n.performDamage();
+                    _Sec_PlayAnim(n, animId);
                     if (n.isDead()) n.performCollapse();
                 }
             });
         }
 
-        // --- B4. 斩杀追击 ---
+        // --- C7. 弹射伤害/闪电链 ---
+        const ricochetMatch = note.match(/<弹射伤害[:：]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/);
+        if (ricochetMatch) {
+            const initFormula = ricochetMatch[1]; 
+            const nextFormula = ricochetMatch[2]; 
+            const maxBounces = parseInt(ricochetMatch[3]);
+            const damageCapM = parseInt(ricochetMatch[4]);
+            let allowRepeat = ricochetMatch[5].trim().toLowerCase() === 'true';
+            const rawMode = ricochetMatch[6];
+            
+            const parsed = _Sec_ParseParamAndAnim(rawMode, DEF_ANIM.HIT);
+            const mode = parsed.content.toLowerCase();
+            const animId = parsed.animId;
+            
+            if (mode === 'random') allowRepeat = true;
+
+            const allEnemies = $gameTroop.members().concat($gameParty.members()).filter(e => 
+                e.friendsUnit() === target.friendsUnit() && e !== target && e.isAlive()
+            );
+
+            let bouncePool = [];
+            if (mode === 'random') bouncePool = allEnemies; 
+            else bouncePool = allEnemies.sort((a, b) => a.index() - b.index());
+
+            let targetsSequence = [];
+            if (bouncePool.length > 0) {
+                if (mode === 'random') {
+                    for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[Math.floor(Math.random() * bouncePool.length)]);
+                } else {
+                    if (allowRepeat) for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[i % bouncePool.length]);
+                    else targetsSequence = bouncePool.slice(0, Math.min(maxBounces, bouncePool.length));
+                }
+            }
+
+            let lastDamage = actualDamage; 
+            let accumulatedDelay = 0;
+
+            targetsSequence.forEach((enemy, index) => {
+                const bounceNum = index + 1;
+                const currentInterval = Math.max(50, Sec_Params.ricochetBase - (index * Sec_Params.ricochetDecay));
+                accumulatedDelay += currentInterval;
+
+                setTimeout(() => {
+                    if (enemy.isDead() && !allowRepeat) return;
+
+                    let currentDmg = 0;
+                    try {
+                        const a = subject, b = enemy, v = $gameVariables._data;
+                        const damage = lastDamage; 
+
+                        let formulaToUse = (index === 0) ? initFormula : nextFormula;
+                        currentDmg = Math.floor(eval(formulaToUse));
+                        lastDamage = currentDmg; 
+                        
+                        if (damageCapM > 0) {
+                            lastDamage = Math.min(lastDamage, damageCapM);
+                            currentDmg = lastDamage;
+                        }
+                        
+                        if (currentDmg > 0) {
+                            _Sec_SuppressLog(enemy); 
+                            enemy.gainHp(-currentDmg); 
+                            
+                            enemy.result().hpDamage = currentDmg;
+                            enemy.result().hpAffected = true;
+                            enemy.startDamagePopup();
+                            enemy.performDamage();
+                            _Sec_PlayAnim(enemy, animId); 
+                            if (enemy.isDead()) enemy.performCollapse();
+                            
+                            console.log(`[Sec] 闪电链: 第${bounceNum}跳 -> ${enemy.name()} 伤害:${currentDmg}`);
+                        }
+                    } catch (e) { console.error("[Sec] 弹射公式错误", e); }
+                }, accumulatedDelay);
+            });
+        }
+
+        // --- C4. 斩杀追击 ---
         const execMatch = note.match(/<斩杀追击[:：]\s*(\d+)\s*[,，]\s*([^>]+)\s*>/);
         if (execMatch) {
             const threshold = parseInt(execMatch[1]) / 100;
-            const formula = execMatch[2].trim();
+            const rawContent = execMatch[2];
+            const parsed = _Sec_ParseParamAndAnim(rawContent, DEF_ANIM.HIT);
+            const formula = parsed.content;
+            const animId = parsed.animId;
+
             if (target.hpRate() < threshold && target.isAlive()) {
                 try {
                     const a = subject, b = target, v = $gameVariables._data, dmg = actualDamage;
                     const bonusDmg = Math.floor(eval(formula));
                     if (bonusDmg > 0) {
                         setTimeout(() => {
-                            target.gainHp(-bonusDmg);
+                            _Sec_SuppressLog(target); 
+                            target.gainHp(-bonusDmg); 
+                            
                             target.result().hpDamage = bonusDmg;
                             target.result().hpAffected = true;
                             target.startDamagePopup();
                             target.performDamage();
+                            _Sec_PlayAnim(target, animId);
                             if (target.isDead()) target.performCollapse();
                         }, 100);
                     }
-                } catch(e) { console.error("[Sec] 斩杀计算错误", e); }
+                } catch(e) {}
             }
         }
 
-        // --- B5. 技能吸血 ---
-        const drainMatch = note.match(/<技能吸血[:：]\s*([\d\.]+)\s*>/);
+        // --- C5. 技能吸血 ---
+        const drainMatch = note.match(/<技能吸血[:：]\s*([\d\.]+)(?:[,，]\s*(\d+))?\s*>/);
         if (drainMatch && actualDamage > 0) {
             const rate = parseFloat(drainMatch[1]);
+            const animId = drainMatch[2] ? parseInt(drainMatch[2]) : DEF_ANIM.HEAL;
+
             const healAmount = Math.floor(actualDamage * rate);
             if (healAmount > 0 && subject.isAlive()) {
-                subject.gainHp(healAmount);
+                _Sec_SuppressLog(subject); 
+                subject.gainHp(healAmount); 
+                
                 subject.result().hpDamage = -healAmount; 
                 subject.result().hpAffected = true;
                 subject.startDamagePopup();
+                _Sec_PlayAnim(subject, animId);
             }
         }
-
-        // ------------------------------------------------------------------
-        // 2.3 【模块 C】 高级与遗留机制
-        // ------------------------------------------------------------------
         
-        // --- C1. 状态循环 ---
+        // --- C6. 状态循环 ---
         const stateCycleMatch = note.match(/<状态循环[:：]\s*([^>]+)\s*>/);
         if (stateCycleMatch) {
             const stateIds = stateCycleMatch[1].split(/[,，]/).map(id => parseInt(id.trim()));
             if (stateIds.length >= 2) {
                 let currentIndex = stateIds.findIndex(id => target.isStateAffected(id));
-                if (currentIndex === -1) {
-                    target.addState(stateIds[0]);
-                } else if (currentIndex < stateIds.length - 1) {
+                if (currentIndex === -1) target.addState(stateIds[0]);
+                else if (currentIndex < stateIds.length - 1) {
                     target.removeState(stateIds[currentIndex]);
                     target.addState(stateIds[currentIndex + 1]);
                 }
             }
         }
-
-        // --- C2. 复杂流程 ---
-        if (!this._specialEffectsProcessed) {
-            this._specialEffectsProcessed = true;
-            if (subject) subject._counterAttackBuffApplied = false;
-            processComplexFeatures.call(this, subject, target, note);
-        }
-    };
-
-    /**
-     * 处理复杂的遗留功能 (正则增强)
-     */
-    function processComplexFeatures(user, target, note) {
-        // 功能 8：累计反击
-        const counterMatch = note.match(/<累计反击[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/);
-        if (counterMatch) {
-            const stateId = parseInt(counterMatch[1]);
-            const statType = counterMatch[2].trim().toLowerCase();
-            const statValue = counterMatch[3].trim();
-            const counterFormula = counterMatch[4].trim();
-
-            if (user.isStateAffected(stateId)) {
-                try {
-                    const actorId = user.isActor() ? user.actorId() : -user.enemyId();
-                    const accumulatedDamage = _Sec_AccumulatedDamage.get(actorId) || 0;
-                    const a = user, b = target, d = accumulatedDamage, v = $gameVariables._data;
-                    const damage = Math.floor(eval(counterFormula));
-                    if (damage > 0) {
-                        if (this.isForAll()) {
-                            this.targetsForOpponents().forEach(t => {
-                                t.gainHp(-damage);
-                                if (t.result().hpAffected) t.startDamagePopup();
-                                if (t.isDead() && BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', t);
-                            });
-                        } else {
-                            target.gainHp(-damage);
-                            if (target.result().hpAffected) target.startDamagePopup();
-                            if (target.isDead() && BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', target);
-                        }
-                    }
-                    user.removeState(stateId);
-                    user._counterAttackBuffApplied = false;
-                    _Sec_AccumulatedDamage.set(actorId, 0);
-                } catch(e) { console.error("[Sec] 累计反击释放错误", e); }
-            } else {
-                 if (!user._counterAttackBuffApplied) {
-                    user.addState(stateId);
-                    user._counterAttackBuffApplied = true;
-                    const actorId = user.isActor() ? user.actorId() : -user.enemyId();
-                    _Sec_AccumulatedDamage.set(actorId, 0);
-                    try {
-                        const a = user, v = $gameVariables._data;
-                        const value = Math.floor(eval(statValue));
-                        const paramMap = { 'def':3, 'mdef':5, 'atk':2, 'mat':4, 'agi':6, 'luk':7 };
-                        if(paramMap[statType]) user._paramPlus[paramMap[statType]] += value;
-                        else if(statType === 'hp') user.gainHp(value);
-                        user.refresh();
-                    } catch(e){}
-                }
-            }
-        }
-
-        // 功能 9：伤害转移
-        const dtMatch = note.match(/<伤害转移[:：]\s*(\d+)\s*[,，]\s*([\d\.]+)(?:[,，]\s*([^,，>]+)(?:[,，]\s*([^>]+))?)?\s*>/);
-        if (dtMatch) {
-             const stateId = parseInt(dtMatch[1]);
-             const rate = parseFloat(dtMatch[2]);
-             if (user.isStateAffected(stateId)) {
-                 user.removeState(stateId);
-                 $gameParty.members().forEach(m => _Sec_TransferMarker.delete(m.actorId()));
-             } else {
-                 user.addState(stateId);
-                 const userId = user.isActor() ? user.actorId() : -user.enemyId();
-                 $gameParty.members().forEach(m => {
-                     _Sec_TransferMarker.set(m.actorId(), {
-                         markerId: userId,
-                         transferRate: rate,
-                         transferFormula: dtMatch[3],
-                         recoverFormula: dtMatch[4]
-                     });
-                 });
-             }
-        }
-
-        // 功能 10：弹射伤害
-        const ricochetMatch = note.match(/<弹射伤害[:：]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/);
-        if (ricochetMatch) {
-            const initFormula = ricochetMatch[1];
-            const ricochetFormula = ricochetMatch[2];
-            const maxBounces = parseInt(ricochetMatch[3]);
-            const damageCapM = parseInt(ricochetMatch[4]);
-            let allowRepeat = ricochetMatch[5].trim().toLowerCase() === 'true';
-            const mode = ricochetMatch[6].trim().toLowerCase();
-            if (mode === 'random') allowRepeat = true;
-
-            try {
-                const a = user, b = target, v = $gameVariables._data;
-                const initDmg = Math.floor(eval(initFormula));
-                if(initDmg > 0) {
-                    target.gainHp(-initDmg);
-                    if (target.result().hpAffected) target.startDamagePopup();
-                    target.performDamage();
-                }
-
-                const allEnemies = $gameTroop.members().filter(e => !e.isDead());
-                let bouncePool = [];
-                if (mode === 'random') bouncePool = allEnemies; 
-                else {
-                    bouncePool = allEnemies.filter(e => e !== target);
-                    bouncePool.sort((a, b) => a.index() - b.index());
-                }
-
-                let targetsSequence = [];
-                if (bouncePool.length > 0) {
-                     if (mode === 'random') {
-                        for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[Math.floor(Math.random() * bouncePool.length)]);
-                    } else {
-                        if (allowRepeat) for (let i = 0; i < maxBounces; i++) targetsSequence.push(bouncePool[i % bouncePool.length]);
-                        else targetsSequence = bouncePool.slice(0, Math.min(maxBounces, bouncePool.length));
-                    }
-                }
-
-                let stepDelay = 150;
-                if (targetsSequence.length > 3) stepDelay = Math.max(30, 150 - (targetsSequence.length - 3) * 20);
-
-                targetsSequence.forEach((enemy, index) => {
-                     const realN = index + 1;
-                     const delay = realN * stepDelay;
-                     const n = (damageCapM > 0) ? Math.min(realN, damageCapM) : realN;
-                     setTimeout(() => {
-                         if (enemy.isDead()) return;
-                         let damage = 0;
-                         try {
-                             const a = user, b = enemy, v = $gameVariables._data;
-                             damage = Math.floor(eval(ricochetFormula));
-                         } catch (e) {}
-                         
-                         if (damage > 0) {
-                             const originalHp = enemy.hp;
-                             enemy.gainHp(-damage);
-                             enemy._ignoreDamageLog = true;
-                             const originalResult = enemy._result;
-                             enemy._result = { hpDamage: damage, missed: false, evaded: false, hpAffected: true };
-                             enemy.startDamagePopup();
-                             enemy.performDamage();
-                             enemy._result = originalResult;
-                             if (enemy.isDead() && originalHp > 0) {
-                                 if (BattleManager._logWindow) BattleManager._logWindow.push('performCollapse', enemy);
-                             }
-                         }
-                     }, delay);
-                });
-            } catch(e) {}
-        }
-    }
-
-    // ======================================================================
-    // 3. 挂钩：Game_Action.prototype.apply
-    // ======================================================================
-    const _Game_Action_apply = Game_Action.prototype.apply;
-    Game_Action.prototype.apply = function(target) {
-        _Game_Action_apply.call(this, target);
-        const result = target.result();
-        if (result.isHit() && result.hpDamage > 0) {
-            const damageValue = result.hpDamage;
-            if (target.isActor()) {
-                const actorId = target.actorId();
-                const accumulated = _Sec_AccumulatedDamage.get(actorId) || 0;
-                _Sec_AccumulatedDamage.set(actorId, accumulated + damageValue);
-
-                const transferInfo = _Sec_TransferMarker.get(actorId);
-                if (transferInfo) {
-                    const markerActor = $gameActors.actor(transferInfo.markerId);
-                    if (markerActor && !markerActor.isDead()) {
-                        let transferDamage = 0, recoverAmount = 0;
-                        try {
-                            const d = damageValue;
-                            const r = transferInfo.transferRate / 100;
-                            const mhp = markerActor.mhp, def = markerActor.def, mdef = markerActor.mdf;
-                            if (transferInfo.transferFormula) {
-                                const a = markerActor; const b = target;      
-                                transferDamage = Math.floor(eval(transferInfo.transferFormula));
-                            } else {
-                                transferDamage = Math.floor(d * r * (1 + mhp/1000) * (1 - Math.min(0.5, def/1000) - Math.min(0.3, mdef/1000)));
-                            }
-                            transferDamage = Math.max(1, transferDamage);
-
-                            if (transferInfo.recoverFormula) {
-                                const a = markerActor; const b = target;
-                                recoverAmount = Math.floor(eval(transferInfo.recoverFormula));
-                            } else {
-                                recoverAmount = Math.floor(d * r * (1 + mhp/2000));
-                            }
-                            recoverAmount = Math.max(0, recoverAmount);
-                        } catch(e) {}
-
-                        if (!target.isDead()) {
-                            setTimeout(() => {
-                                target.gainHp(recoverAmount);
-                                const tempRes = target._result;
-                                target._result = { hpDamage: -recoverAmount, hpAffected: true, missed: false, evaded: false };
-                                target.startDamagePopup();
-                                target._result = tempRes;
-                            }, 300);
-                        }
-                        markerActor.gainHp(-transferDamage);
-                        markerActor._ignoreDamageLog = true;
-                        markerActor.result().hpDamage = transferDamage;
-                        markerActor.result().hpAffected = true;
-                        markerActor.startDamagePopup();
-                        markerActor.performDamage();
-                        if (markerActor.isDead()) {
-                             $gameParty.members().forEach(m => _Sec_TransferMarker.delete(m.actorId()));
-                             markerActor.performCollapse();
-                        }
-                    }
-                }
-            }
-        }
     };
 
     // ======================================================================
-    // 4. 挂钩：BattleManager.startAction
+    // 协战与识破
     // ======================================================================
-    const _BattleManager_startAction = BattleManager.startAction;
-    BattleManager.startAction = function() {
-        const all = $gameParty.members().concat($gameTroop.members());
-        all.forEach(b => {
-            b._ignoreMpLog = undefined;
-            b._ignoreDamageLog = undefined;
-        });
-        _BattleManager_startAction.call(this);
-    };
-
-    // ======================================================================
-    // 5. 【模块 D】 全局行动监听器 (Action Observer) [v2.9 修复补回]
-    // ======================================================================
-    const _BattleManager_endAction = BattleManager.endAction;
-    BattleManager.endAction = function() {
-        const triggerSubject = this._subject;
-        const triggerAction = this._action;
-        _BattleManager_endAction.call(this);
-
-        if (triggerSubject && triggerAction && !this._isRecursiveForce) {
-            this._isRecursiveForce = true;
-            this.broadcastActionSignal(triggerSubject, triggerAction);
-            this._isRecursiveForce = false;
-        }
-    };
-
-    BattleManager.broadcastActionSignal = function(source, action) {
-        const allMembers = $gameParty.members().concat($gameTroop.members());
-        for (const observer of allMembers) {
-            if (!observer.isAlive() || !observer.canMove() || observer === source) continue;
-            
-            // D1. 队友协战
-            if (observer.friendsUnit() === source.friendsUnit()) {
-                this.checkSynergy(observer, source, action);
-            }
-            // D2. 敌方识破
-            if (observer.friendsUnit() !== source.friendsUnit()) {
-                this.checkReaction(observer, source, action);
-            }
-        }
-    };
-
-    // ======================================================================
-    // 协战与识破 (v2.9.6 装备兼容版)
-    // ======================================================================
-
-    // 协战检查
     BattleManager.checkSynergy = function(observer, source, action) {
-        // 读取该角色身上的所有备注(含装备)
         const note = _Sec_GetBattlerNotes(observer);
-
         const matches = note.matchAll(/<队友协战[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
         for (const match of matches) {
             const type = match[1].trim().toLowerCase();
@@ -669,45 +713,30 @@
             const skillId = parseInt(match[3]);
             
             let matchType = false;
+            if (type === 'any' && !action.isGuard()) matchType = true;
+            else if (type === 'attack' && action.isAttack() && !action.isGuard()) matchType = true;
+            else if (type === 'skill' && action.isSkill() && !action.isAttack() && !action.isGuard()) matchType = true;
+            else if (type === 'support' && (action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
 
-            // --- 判定逻辑优化 (排除防御) ---
-            if (type === 'any') {
-                if (!action.isGuard()) matchType = true;
-            }
-            else if (type === 'attack') {
-                if (action.isAttack() && !action.isGuard()) matchType = true;
-            }
-            else if (type === 'skill') {
-                if (action.isSkill() && !action.isAttack() && !action.isGuard()) matchType = true;
-            }
-            else if (type === 'support') {
-                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
-            }
-
-            // --- 触发执行 ---
             if (matchType && Math.random() * 100 < chance) {
                 let targetIndex = -2;
-                if (action.isForOne() && this._targets && this._targets.length > 0) {
-                    targetIndex = this._targets[0].index();
-                } else if (action.isForOpponent()) {
+                if (action.isForOne() && this._targets.length > 0) targetIndex = this._targets[0].index();
+                else if (action.isForOpponent()) {
                     const randomTarget = source.opponentsUnit().randomTarget();
                     if (randomTarget) targetIndex = randomTarget.index();
                 }
-
-                console.log(`[Sec] 协战判定(装备兼容): ${observer.name()} 响应协战`);
-                
-                observer.forceAction(skillId, targetIndex);
-                this.forceAction(observer);
+                console.log(`[Sec] 协战: ${observer.name()}`);
+                setTimeout(() => {
+                    observer.forceAction(skillId, targetIndex);
+                    this.forceAction(observer);
+                }, Sec_Params.synergyDelay);
                 return; 
             }
         }
     };
 
-    // 识破检查
     BattleManager.checkReaction = function(observer, source, action) {
-        // 读取该角色身上的所有备注(含装备)
         const note = _Sec_GetBattlerNotes(observer);
-
         const matches = note.matchAll(/<敌方识破[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
         for (const match of matches) {
             const type = match[1].trim().toLowerCase();
@@ -715,28 +744,18 @@
             const skillId = parseInt(match[3]);
             
             let matchType = false;
-            if (type === 'any') {
-                if (!action.isGuard()) matchType = true;
-            }
-            else if (type === 'support') {
-                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
-            }
-            else if (type === 'attack') {
-                if (action.isAttack() && action.isForOpponent() && !action.isGuard()) matchType = true;
-            }
+            if (type === 'any' && !action.isGuard()) matchType = true;
+            else if (type === 'support' && (action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            else if (type === 'attack' && action.isAttack() && action.isForOpponent() && !action.isGuard()) matchType = true;
 
             if (matchType && Math.random() * 100 < chance) {
                 const reactionSkill = $dataSkills[skillId];
                 let targetIndex = -1;
                 if (reactionSkill) {
-                    if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) {
-                        targetIndex = source.index();
-                    } else {
-                        targetIndex = observer.index();
-                    }
+                    if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) targetIndex = source.index();
+                    else targetIndex = observer.index();
                 }
-
-                console.log(`[Sec] 识破触发(装备兼容): ${observer.name()} 反制`);
+                console.log(`[Sec] 识破: ${observer.name()} 反制`);
                 observer.forceAction(skillId, targetIndex);
                 this.forceAction(observer);
                 return;
