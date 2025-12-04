@@ -3462,7 +3462,7 @@ Scene_Battle.prototype.commandEscape = function() {
 Scene_Battle.prototype.startActorCommandSelection = function() {
     this._statusWindow.show();
     this._statusWindow.selectActor(BattleManager.actor());
-    //this._partyCommandWindow.close();
+    this._partyCommandWindow.close();
     this._actorCommandWindow.show();
     this._actorCommandWindow.setup(BattleManager.actor());
 };

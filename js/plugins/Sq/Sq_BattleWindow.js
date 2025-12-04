@@ -1,372 +1,463 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 窗口皮肤自定义 & 底部居中日志 & MP提示过滤
- * @author 神枪手 (Optimized by Gemini)
- * @version 1.5.0
+ * @plugindesc [战斗核心] 暴力阻塞式日志系统 & 窗口防重叠 (v3.0)
+ * @author 神枪手 (Master Architect)
+ *
+ * @param --- General ---
+ * @text [基础设置]
+ * @default
  *
  * @param battleWindowSkin
- * @text 战斗窗口皮肤名称
- * @desc 自定义战斗相关窗口使用的皮肤文件名（需放在img/system/文件夹）
+ * @parent --- General ---
+ * @text 窗口皮肤名称
+ * @desc 战斗窗口（含日志）使用的皮肤文件名（需放在img/system/）。
  * @default Battlewindow
  * @type string
  *
- * @param battleLogOpacity
- * @text 战斗日志透明度
- * @desc 战斗日志窗口的透明度（0-255，0为完全透明）
+ * @param --- Battle Log Layout ---
+ * @text [日志外观布局]
+ * @default
+ *
+ * @param logFontSize
+ * @parent --- Battle Log Layout ---
+ * @text 字体大小
+ * @default 20
+ * @type number
+ *
+ * @param logHeight
+ * @parent --- Battle Log Layout ---
+ * @text 窗口高度
+ * @default 70
+ * @type number
+ *
+ * @param logBottomOffset
+ * @parent --- Battle Log Layout ---
+ * @text 底部距离修正
+ * @desc 0为紧贴底部，正数向上移动。
  * @default 0
  * @type number
- * @min 0
- * @max 255
+ *
+ * @param --- Battle Log Logic ---
+ * @text [日志逻辑设置]
+ * @default
  *
  * @param logClearDelay
- * @text 日志自动清空延迟(毫秒)
- * @desc 战斗动作结束后，日志保持显示的时间（单位：毫秒，1000=1秒）
- * @default 1000
+ * @parent --- Battle Log Logic ---
+ * @text 停留时间(帧)
+ * @desc 文本显示后的强制等待时间（60帧=1秒）。
+ * @default 60
  * @type number
- * @min 0
- * @max 5000
+ *
+ * @param fadeInSpeed
+ * @parent --- Battle Log Logic ---
+ * @text 淡入速度
+ * @desc 1-255，数值越大越快。
+ * @default 255
+ * @type number
+ *
+ * @param fadeOutSpeed
+ * @parent --- Battle Log Logic ---
+ * @text 淡出速度
+ * @desc 1-255，数值越大越快。
+ * @default 25
+ * @type number
+ *
+ * @param --- Text Colors ---
+ * @text [文本颜色]
+ * @default
+ *
+ * @param actorNameColor
+ * @parent --- Text Colors ---
+ * @text 我方名字颜色ID
+ * @default 4
+ * @type number
+ *
+ * @param enemyNameColor
+ * @parent --- Text Colors ---
+ * @text 敌方名字颜色ID
+ * @default 2
+ * @type number
+ *
+ * @param skillNameColor
+ * @parent --- Text Colors ---
+ * @text 技能物品颜色ID
+ * @default 14
+ * @type number
  *
  * @param --- Enemy Icons ---
- * @text [敌人状态图标设置]
+ * @text [敌人状态图标]
  * @default
  *
  * @param enemyIconSize
  * @parent --- Enemy Icons ---
  * @text 图标显示大小
- * @desc 敌人头顶状态图标的显示尺寸（原版为32）。
  * @default 24
  * @type number
- * @min 8
  *
  * @param enemyIconSpace
  * @parent --- Enemy Icons ---
  * @text 图标间距
- * @desc 多个图标并排显示时的横向间距。
  * @default 2
  * @type number
- * @min -10
  *
  * @param enemyIconMax
  * @parent --- Enemy Icons ---
  * @text 最大图标显示数
- * @desc 超过此数量的图标将被忽略。
  * @default 8
  * @type number
- * @min 1
  *
  * @param enemyIconOffsetY
  * @parent --- Enemy Icons ---
  * @text Y轴位置修正
- * @desc 调整图标在敌人头顶的垂直位置（正数向下，负数向上）。
  * @default 10
  * @type number
- * @min -999
- * @max 999
  *
  * @help
  * ============================================================================
- * 版本更新说明 (v1.5.0)
+ * 核心修复说明 (v3.0 暴力版)
  * ============================================================================
- * - 新增：敌人战斗状态图标改为横向排列显示（原为轮播）。
- * - 新增：可自定义敌人状态图标的大小、间距和位置。
+ * 针对指令窗口和日志窗口“打架”的问题，本版本采用了最底层的拦截方式：
  *
- * ============================================================================
- * 功能说明
- * ============================================================================
- * 1. 窗口皮肤自定义：
- * 自动将战斗中的命令窗口、状态窗口、日志窗口、帮助窗口等替换为指定皮肤。
+ * 1. 【场景级压制】：
+ * 直接劫持了 Scene_Battle 的 updateInputWindowVisibility 方法。
+ * 只要日志窗口在屏幕上（不透明度 > 0），它就会强制执行 
+ * closeCommandWindows()，让左侧指令窗口物理消失。
  *
- * 2. 战斗日志样式优化：
- * - 日志窗口默认隐藏，有内容时自动显示并置顶（最上层）
- * - 无内容时自动隐藏并恢复原始图层层级
- * - 文字居中显示，强制单行显示
- * - 固定于屏幕底部，宽度与屏幕一致
+ * 2. 【忙碌锁死】：
+ * 只要日志在显示，BattleManager.isBusy() 强制返回 true。
+ * 这会暂停战斗流程的推进。
  *
- * 3. MP日志智能过滤：
- * - 自动屏蔽“自动回蓝”的提示文本，防止刷屏
- * - 需配合战斗机制插件：回蓝前设置 target._ignoreMpLog = true 即可触发过滤
+ * 3. 【幽灵原版日志】：
+ * 系统原带的日志窗口被移出屏幕并隐藏，只负责跑数据，不负责显示。
  *
- * 4. 敌人状态图标优化：
- * - 敌人的Buff/Debuff/状态不再轮播，而是横向铺开显示。
- * - 可在参数中调整大小，适配竖屏小分辨率界面。
- *
- * ============================================================================
- * 使用方法
- * ============================================================================
- * 1. 皮肤设置：
- * 将自定义皮肤图片（PNG格式）放入项目的 img/system/ 文件夹。
- *
- * 2. 敌人图标：
- * 调整 "图标显示大小" 和 "图标间距" 以适应你的游戏分辨率（480x854）。
+ * 使用此插件后，日志出现期间，玩家将完全无法操作，指令窗口也绝对无法弹出，
+ * 直到日志淡出动画播放完毕。
  */
 
 (function() {
-    // ========================================================================
-    // 1. 获取插件参数
-    // ========================================================================
     const parameters = PluginManager.parameters('Sq_BattleWindow');
     const battleWindowSkin = String(parameters['battleWindowSkin'] || 'Battlewindow');
-    const battleLogOpacity = Number(parameters['battleLogOpacity'] || 0);
-    const logClearDelay = Number(parameters['logClearDelay'] || 1000);
+    
+    // 布局与动画
+    const logFontSize = Number(parameters['logFontSize'] || 20);
+    const logHeight = Number(parameters['logHeight'] || 70);
+    const logBottomOffset = Number(parameters['logBottomOffset'] || 0);
+    const logDelay = Number(parameters['logClearDelay'] || 60);
+    const fadeInSpeed = Number(parameters['fadeInSpeed'] || 255);
+    const fadeOutSpeed = Number(parameters['fadeOutSpeed'] || 25);
 
-    // 敌人图标相关参数
+    // 颜色
+    const colorActor = Number(parameters['actorNameColor'] || 4);
+    const colorEnemy = Number(parameters['enemyNameColor'] || 2);
+    const colorSkill = Number(parameters['skillNameColor'] || 14);
+
+    // 图标
     const enemyIconSize = Number(parameters['enemyIconSize'] || 24);
     const enemyIconSpace = Number(parameters['enemyIconSpace'] || 2);
     const enemyIconMax = Number(parameters['enemyIconMax'] || 8);
     const enemyIconOffsetY = Number(parameters['enemyIconOffsetY'] || 0);
 
     // ========================================================================
-    // 2. 加载自定义窗口皮肤 (Load Window Skins)
+    // 1. 窗口皮肤加载 (通用)
     // ========================================================================
-    
-    Window_PartyCommand.prototype.loadWindowskin = function() {
+    const _loadCustomSkin = function() {
         this.windowskin = ImageManager.loadSystem(battleWindowSkin);
     };
 
-    Window_BattleStatus.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
-
-    Window_ActorCommand.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
-
-    Window_BattleLog.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
-    
-    Window_Help.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
-    
-    Window_MenuCommand.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
-    
-    Window_MenuActor.prototype.loadWindowskin = function() {
-        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
-    };
+    Window_PartyCommand.prototype.loadWindowskin = _loadCustomSkin;
+    Window_BattleStatus.prototype.loadWindowskin = _loadCustomSkin;
+    Window_ActorCommand.prototype.loadWindowskin = _loadCustomSkin;
+    Window_Help.prototype.loadWindowskin         = _loadCustomSkin;
+    Window_MenuCommand.prototype.loadWindowskin  = _loadCustomSkin;
+    Window_MenuActor.prototype.loadWindowskin    = _loadCustomSkin;
 
     // ========================================================================
-    // 3. 战斗日志窗口核心逻辑 (Battle Log Logic)
+    // 2. 辅助工具
     // ========================================================================
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+    }
 
-    const _Window_BattleLog_initialize = Window_BattleLog.prototype.initialize;
-    Window_BattleLog.prototype.initialize = function(rect) {
-        _Window_BattleLog_initialize.call(this, rect);
-        this.opacity = 0; 
-        this.visible = false; 
-        this._lines = []; 
-        this._originalLayerIndex = null;
-        this.loadWindowskin();
-    };
-
-    Window_BattleLog.prototype.updateVisibilityByContent = function() {
-        const hasContent = this._lines.length > 0;
-        const parent = this.parent; 
-
-        if (parent) {
-            if (this._originalLayerIndex === null) {
-                this._originalLayerIndex = parent.children.indexOf(this);
-            }
-
-            if (hasContent) {
-                if (parent.children.indexOf(this) !== parent.children.length - 1) {
-                    parent.removeChild(this); 
-                    parent.addChild(this); 
-                }
-            } else {
-                const currentIndex = parent.children.indexOf(this);
-                if (currentIndex !== this._originalLayerIndex && this._originalLayerIndex > -1) {
-                    parent.removeChild(this);
-                    const targetIndex = Math.min(this._originalLayerIndex, parent.children.length);
-                    parent.addChildAt(this, targetIndex);
-                }
+    function colorizeText(text) {
+        if (!text) return text;
+        const actors = $gameParty.battleMembers();
+        for (const actor of actors) {
+            const name = actor.name();
+            if (text.includes(name)) {
+                const reg = new RegExp(escapeRegExp(name), 'g');
+                text = text.replace(reg, `\\C[${colorActor}]${name}\\C[0]`);
             }
         }
+        const enemies = $gameTroop.members(); 
+        for (const enemy of enemies) {
+            const name = enemy.originalName();
+            if (name && text.includes(name) && !text.includes(`]${name}`)) {
+                const reg = new RegExp(escapeRegExp(name), 'g');
+                text = text.replace(reg, `\\C[${colorEnemy}]${name}\\C[0]`);
+            }
+        }
+        return text;
+    }
 
-        this.visible = hasContent; 
-        this.opacity = hasContent ? battleLogOpacity : 0; 
+    // ========================================================================
+    // 3. [核心] Window_RainbowLog 
+    // ========================================================================
+    function Window_RainbowLog() {
+        this.initialize(...arguments);
+    }
+
+    Window_RainbowLog.prototype = Object.create(Window_Base.prototype);
+    Window_RainbowLog.prototype.constructor = Window_RainbowLog;
+
+    Window_RainbowLog.prototype.initialize = function(rect) {
+        Window_Base.prototype.initialize.call(this, rect);
+        this.loadWindowskin();
+        this.opacity = 0;         
+        this.contentsOpacity = 0;
+        this._lines = [];
+        this._waitCount = 0;
+        this._state = 'idle'; 
+        this.visible = false;
     };
 
+    Window_RainbowLog.prototype.loadWindowskin = function() {
+        this.windowskin = ImageManager.loadSystem(battleWindowSkin);
+    };
+
+    Window_RainbowLog.prototype.resetFontSettings = function() {
+        Window_Base.prototype.resetFontSettings.call(this);
+        this.contents.fontSize = logFontSize;
+    };
+
+    // 关键：只要不是空闲状态，就是“正在占用屏幕”
+    Window_RainbowLog.prototype.isBlocking = function() {
+        return this._state !== 'idle';
+    };
+
+    Window_RainbowLog.prototype.addLog = function(text) {
+        this._lines = [text]; 
+        this._waitCount = logDelay; 
+        this.refresh();
+        this.show();
+        this.open();
+        this.opacity = 0; // 初始透明，走淡入
+        this.contentsOpacity = 0;
+        this._state = 'opening';
+    };
+
+    Window_RainbowLog.prototype.clearLog = function() {
+        this._lines = [];
+        this._waitCount = 0;
+        this.opacity = 0;
+        this.contentsOpacity = 0;
+        this.contents.clear();
+        this.visible = false;
+        this._state = 'idle';
+    };
+
+    Window_RainbowLog.prototype.refresh = function() {
+        this.contents.clear();
+        if (this._lines.length > 0) {
+            const text = this._lines[0];
+            const width = this.innerWidth;
+            const textSize = this.textSizeEx(text);
+            const x = Math.max(0, (width - textSize.width) / 2);
+            const y = (this.innerHeight - textSize.height) / 2;
+            this.drawTextEx(text, x, y, width);
+        }
+    };
+
+    Window_RainbowLog.prototype.update = function() {
+        Window_Base.prototype.update.call(this);
+        if (this._lines.length === 0) return;
+
+        switch (this._state) {
+            case 'opening':
+                this.visible = true;
+                this.opacity = Math.min(this.opacity + fadeInSpeed, 255);
+                this.contentsOpacity = Math.min(this.contentsOpacity + fadeInSpeed, 255);
+                if (this.opacity >= 255) {
+                    this._state = 'waiting';
+                }
+                break;
+            case 'waiting':
+                if (this._waitCount > 0) {
+                    this._waitCount--;
+                } else {
+                    this._state = 'closing';
+                }
+                break;
+            case 'closing':
+                this.opacity -= fadeOutSpeed;
+                this.contentsOpacity -= fadeOutSpeed;
+                if (this.opacity <= 0) {
+                    this.clearLog();
+                }
+                break;
+        }
+    };
+
+    // ========================================================================
+    // 4. [暴力修正] 场景层级压制
+    // ========================================================================
+    
+    // 1. 劫持 isBusy，让逻辑停下来
+    const _BattleManager_isBusy = BattleManager.isBusy;
+    BattleManager.isBusy = function() {
+        if (_BattleManager_isBusy.call(this)) return true;
+        
+        const scene = SceneManager._scene;
+        if (scene instanceof Scene_Battle && scene._rainbowLogWindow) {
+            // 只要日志窗口在工作，系统就是忙碌的！
+            if (scene._rainbowLogWindow.isBlocking()) {
+                return true; 
+            }
+        }
+        return false;
+    };
+
+    // 2. 【核心修复】劫持指令窗口可见性更新
+    // 原版这里会根据 BattleManager.isInputting() 自动显示窗口
+    // 我们强行插入判断：如果日志在显示，给我闭嘴（隐藏）！
+    const _Scene_Battle_updateInputWindowVisibility = Scene_Battle.prototype.updateInputWindowVisibility;
+    Scene_Battle.prototype.updateInputWindowVisibility = function() {
+        if (this._rainbowLogWindow && this._rainbowLogWindow.isBlocking()) {
+            this.closeCommandWindows(); // 强制关闭所有指令窗口
+            this.hideSubInputWindows(); // 强制隐藏子窗口
+            return; // 不执行原版逻辑，直接跳过
+        }
+        _Scene_Battle_updateInputWindowVisibility.call(this);
+    };
+
+    // ========================================================================
+    // 5. 场景挂载与原版日志阉割
+    // ========================================================================
+    
+    const _Scene_Battle_createAllWindows = Scene_Battle.prototype.createAllWindows;
+    Scene_Battle.prototype.createAllWindows = function() {
+        _Scene_Battle_createAllWindows.call(this);
+        
+        // 阉割原版日志：移出屏幕，不可见
+        if (this._logWindow) {
+            this._logWindow.x = 20000;
+            this._logWindow.visible = false;
+        }
+
+        this.createRainbowLogWindow();
+    };
+
+    Scene_Battle.prototype.createRainbowLogWindow = function() {
+        const h = logHeight; 
+        const w = Graphics.boxWidth;
+        const x = 0;
+        const y = Graphics.boxHeight - h - logBottomOffset;
+        const rect = new Rectangle(x, y, w, h);
+        this._rainbowLogWindow = new Window_RainbowLog(rect);
+        this.addChild(this._rainbowLogWindow);
+    };
+
+    // 原版日志功能剥离
+    Window_BattleLog.prototype.loadWindowskin = _loadCustomSkin;
+    Window_BattleLog.prototype.drawBackground = function() { };
+    Window_BattleLog.prototype.drawLineText = function(index) { };
+    Window_BattleLog.prototype.refresh = function() { };
+    // 强行设为不可见，防止闪烁
+    Window_BattleLog.prototype.updateVisibilityByContent = function() { this.visible = false; };
+
+    // 数据转发
     const _Window_BattleLog_addText = Window_BattleLog.prototype.addText;
     Window_BattleLog.prototype.addText = function(text) {
-        _Window_BattleLog_addText.call(this, text);
-        while (this._lines.length > this.maxLines()) {
-            this._lines.shift(); 
+        _Window_BattleLog_addText.call(this, text); 
+        const scene = SceneManager._scene;
+        if (scene instanceof Scene_Battle && scene._rainbowLogWindow) {
+            const coloredText = colorizeText(text);
+            scene._rainbowLogWindow.addLog(coloredText);
         }
-        this.updateVisibilityByContent();
-        this.refresh();
     };
 
     const _Window_BattleLog_clear = Window_BattleLog.prototype.clear;
     Window_BattleLog.prototype.clear = function() {
         _Window_BattleLog_clear.call(this);
-        this.updateVisibilityByContent();
+        // 不在这里清空彩虹窗口，让它自己跑完动画
     };
 
-    const _Window_BattleLog_popBaseLine = Window_BattleLog.prototype.popBaseLine;
-    Window_BattleLog.prototype.popBaseLine = function() {
-        _Window_BattleLog_popBaseLine.call(this);
-        this.updateVisibilityByContent();
-        this.refresh();
-    };
-
-    Window_BattleLog.prototype.maxLines = function() {
-        return 1;
-    };
-
-    Scene_Battle.prototype.logWindowRect = function() {
-        const wx = 0;
-        const ww = Graphics.boxWidth;
-        const wh = this.calcWindowHeight(1, false); 
-        const wy = Graphics.boxHeight - wh; 
-        return new Rectangle(wx, wy, ww, wh);
-    };
-
-    Window_BattleLog.prototype.drawLineText = function(index) {
-        const contentWidth = this.contentsWidth();
-        const lineHeight = this.lineHeight();
-        const text = this._lines[index];
-
-        const textWidth = this.textSizeEx(text).width;
-        const yPos = index * lineHeight;
-        this.contents.clearRect(0, yPos, contentWidth, lineHeight);
-        const startX = (contentWidth - textWidth) / 2;
-        this.drawTextEx(text, startX, yPos);
-    };
-
-    const _Scene_Battle_endAction = Scene_Battle.prototype.endAction;
-    Scene_Battle.prototype.endAction = function(subject) {
-        _Scene_Battle_endAction.call(this, subject);
-        const logWindow = this._logWindow;
-        if (logWindow) {
-            setTimeout(() => {
-                if (logWindow && !logWindow.destroyed) {
-                    logWindow.clear();
-                }
-            }, logClearDelay); 
+    const _Window_BattleLog_displayItemMessage = Window_BattleLog.prototype.displayItemMessage;
+    Window_BattleLog.prototype.displayItemMessage = function(fmt, subject, item) {
+        if (fmt) {
+            const coloredItemName = `\\C[${colorSkill}]${item.name}\\C[0]`;
+            const text = fmt.format(subject.name(), coloredItemName);
+            this.push('addText', text);
+        } else {
+            _Window_BattleLog_displayItemMessage.call(this, fmt, subject, item);
         }
     };
 
-    // ========================================================================
-    // 4. MP日志过滤逻辑 (MP Log Filtering)
-    // ========================================================================
-    
     const _Window_BattleLog_displayMpDamage = Window_BattleLog.prototype.displayMpDamage;
     Window_BattleLog.prototype.displayMpDamage = function(target) {
         if (target._ignoreMpLog) {
             target._ignoreMpLog = false;
-            if (target.result().mpDamage < 0) {
-                return;
-            }
-        } else {
-            target._ignoreMpLog = false;
+            if (target.result().mpDamage < 0) return;
         }
         _Window_BattleLog_displayMpDamage.call(this, target);
     };
 
     // ========================================================================
-    // 5. 敌人状态图标自定义 (Enemy State Icons)
+    // 6. 敌人状态图标
     // ========================================================================
 
     const _Sprite_StateIcon_initMembers = Sprite_StateIcon.prototype.initMembers;
     Sprite_StateIcon.prototype.initMembers = function() {
         _Sprite_StateIcon_initMembers.call(this);
-        // 用于记录上一帧的图标列表，防止每帧重绘
         this._lastIconListString = ""; 
     };
 
-    // 重写 update 方法，分流 敌人 和 角色/其他 的逻辑
     const _Sprite_StateIcon_update = Sprite_StateIcon.prototype.update;
     Sprite_StateIcon.prototype.update = function() {
         if (this._battler && this._battler.isEnemy()) {
-            // 如果是敌人，运行自定义的横向排列逻辑
             Sprite.prototype.update.call(this);
             this.updateEnemyIcons();
         } else {
-            // 如果是角色，保持原版逻辑（轮播）
             _Sprite_StateIcon_update.call(this);
         }
     };
 
-    // 敌人图标的核心更新逻辑
     Sprite_StateIcon.prototype.updateEnemyIcons = function() {
         if (!this._battler) return;
-
-        // 1. 获取当前所有需要显示的图标
-        // allIcons() 返回包含 状态图标 和 Buff图标 的数组
         let icons = this._battler.allIcons();
+        if (icons.length > enemyIconMax) icons = icons.slice(0, enemyIconMax);
 
-        // 限制最大显示数量
-        if (icons.length > enemyIconMax) {
-            icons = icons.slice(0, enemyIconMax);
-        }
-
-        // 2. 检查图标是否发生变化（简单的字符串比较）
         const currentIconString = JSON.stringify(icons);
         if (this._lastIconListString !== currentIconString) {
             this._lastIconListString = currentIconString;
             this.refreshEnemyIcons(icons);
         }
-
-        // 3. 处理位置偏移 (Y轴)
-        // Sprite_Enemy 中会自动更新 this.y，我们在此基础上叠加偏移
-        // 注意：Sprite_Enemy.prototype.updateStateSprite 会每帧重置 y
-        // 所以我们修改 anchor 或者在 refresh 中控制内部内容位置
-        // 这里通过修改 pivot 或在绘制时偏移来实现可能更稳妥，
-        // 但简单的方式是修正父类设置后的 y。
-        // 由于 update 在父类 update 之后调用，我们可以微调 y。
         this.y += enemyIconOffsetY;
     };
 
-    // 绘制敌人图标
     Sprite_StateIcon.prototype.refreshEnemyIcons = function(icons) {
-        if (icons.length === 0) {
-            this.bitmap = null;
-            return;
-        }
+        if (this.bitmap) { this.bitmap.destroy(); this.bitmap = null; }
+        if (icons.length === 0) return;
 
         const iconSet = ImageManager.loadSystem("IconSet");
-        // 确保 IconSet 已加载
-        if (!iconSet.isReady()) {
-            // 如果没加载完，清空记录，下一帧重试
-            this._lastIconListString = "";
-            return;
-        }
+        if (!iconSet.isReady()) { this._lastIconListString = ""; return; }
 
-        const pw = ImageManager.iconWidth; // 默认32
+        const pw = ImageManager.iconWidth;
         const ph = ImageManager.iconHeight;
-        
-        // 计算目标尺寸
         const targetSize = enemyIconSize;
         const spacing = enemyIconSpace;
-        
-        // 计算Bitmap的总宽度
         const totalWidth = icons.length * targetSize + (icons.length - 1) * spacing;
         const totalHeight = targetSize;
 
-        // 创建新的 Bitmap (或者重用现有的并清空)
-        if (this.bitmap) {
-            this.bitmap.destroy(); // 销毁旧的以防内存泄漏
-        }
         this.bitmap = new Bitmap(totalWidth, totalHeight);
-
-        // 绘制每一个图标
         for (let i = 0; i < icons.length; i++) {
             const iconIndex = icons[i];
             const sx = (iconIndex % 16) * pw;
             const sy = Math.floor(iconIndex / 16) * ph;
-            
             const dx = i * (targetSize + spacing);
-            const dy = 0;
-
-            // blt(source, sx, sy, sw, sh, dx, dy, dw, dh)
-            this.bitmap.blt(iconSet, sx, sy, pw, ph, dx, dy, targetSize, targetSize);
+            this.bitmap.blt(iconSet, sx, sy, pw, ph, dx, 0, targetSize, targetSize);
         }
-
-        // 重置 frame 使得整个 Bitmap 可见
-        this.setFrame(0, 0, totalWidth, totalHeight);
+        this.anchor.x = 0.5;
+        this.anchor.y = 0.5;
     };
 
 })();
