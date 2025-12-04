@@ -1,8 +1,8 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
+ * @plugindesc [重构版v3.7.2] 战斗系统实例插件 - 核心逻辑修正版
  * @author Secmon (Refactored by Gemini)
- * @version 3.6.1
+ * @version 3.7.2
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -50,9 +50,9 @@
  * @param SynergyDelay
  * @parent ---Time Settings---
  * @text 队友协战延迟(ms)
- * @desc 队友响应协战前的等待时间。建议 100-300。
+ * @desc (注意：为保证稳定性，协战逻辑不再延迟，此参数仅作预留或微量视觉调整)
  * @type number
- * @default 200
+ * @default 0
  *
  * @param StateInteractDelay
  * @parent ---Time Settings---
@@ -84,33 +84,40 @@
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v3.6.1 (修复版) ★
+ * ★ 插件功能手册 v3.7.2 (核心修正版) ★
  * ============================================================================
- * 【更新说明】
- * v3.6.1: 
- * 1. [修复] 移除了代码中残留的 _Sec_RestoreLog 调用，解决了蓄力释放、
- * 溅射等机制因报错而中断（导致没伤害数字/没动画）的严重 Bug。
+ * 【关键修复】
+ * v3.7.2: 
+ * 1. [Fix] 修复了队友协战/敌方识破完全不触发的严重 Bug。
+ * 原因：原版 endAction 会清空 subject，导致插件无法获取行动源头。
+ * 现已修正为在清空前捕获引用。
+ * 2. [Check] 再次确认了多重协战队列逻辑，确保多个队友可以依次响应。
+ *
+ * 【重要提示】
+ * 关于 <队友协战: Skill, ...>
+ * - "Skill" 类型仅在施放【技能】时触发。
+ * - 【普通攻击】在代码逻辑中属于 Attack，不属于 Skill。
+ * - 如果希望普攻也触发，请把类型写为 Attack，或者 Any。
  *
  * ============================================================================
  * 一、标签写法速查
  * ----------------------------------------------------------------------------
- * 1. 推拉条 (写在技能/物品备注中)
- * <推条: n, 动画ID>  // 延后行动 n 个时间单位 (Delay)
- * <拉条: n, 动画ID>  // 提前行动 n 个时间单位 (Advance)
- * 例: <推条: 10, 66> (击退10单位，播放动画66)
+ * 1. 队友协战 (支持写多行，依次触发)
+ * <队友协战: Attack, 100, 301>
+ * <队友协战: Skill, 100, 315>
  *
- * 2. 守护光环 (动画播在队友身上)
- * <守护光环: 状态ID, 比例, 公式, 动画ID>
+ * 2. 敌方识破
+ * <敌方识破: Support, 100, 80>
  *
- * 3. 蓄力释放 (动画播在敌人身上)
- * <蓄力释放: 状态ID, 公式, 动画ID>
+ * 3. 推拉条
+ * <推条: 10, 66>
+ * <拉条: 10, 66>
  *
- * 4. 受击蓄力 (无动画)
- * <受击蓄力: 状态ID>
+ * 4. 守护光环 (动画播在队友身上)
+ * <守护光环: 60, 0.8, damage, 52>
  *
- * 5. 溅射/闪电链 (支持动画)
- * <溅射伤害: 公式, 范围, 动画ID>
- * <弹射伤害: ..., 模式, 动画ID>
+ * 5. 蓄力释放 (动画播在敌人身上)
+ * <蓄力释放: 50, d*2, 1>
  *
  * ============================================================================
  */
@@ -119,7 +126,7 @@
     'use strict';
 
     // ======================================================================
-    // 0. 读取参数
+    // 0. 参数读取
     // ======================================================================
     const pluginName = "Sec_BattleSystemInstance";
     const parameters = PluginManager.parameters(pluginName);
@@ -127,7 +134,7 @@
     const Sec_Params = {
         guardianDelay: Number(parameters['GuardianDelay'] || 200),
         chargeDelay: Number(parameters['ChargeDelay'] || 400),
-        synergyDelay: Number(parameters['SynergyDelay'] || 200),
+        synergyDelay: Number(parameters['SynergyDelay'] || 0), 
         stateInteractDelay: Number(parameters['StateInteractDelay'] || 200),
         fieldDelay: Number(parameters['FieldResonanceDelay'] || 200),
         ricochetBase: Number(parameters['RicochetBaseDelay'] || 200),
@@ -142,7 +149,7 @@
     };
 
     // ======================================================================
-    // 1. 辅助函数
+    // 1. 辅助函数 & 日志净化
     // ======================================================================
     function _Sec_GetBattlerNotes(battler) {
         let notes = "";
@@ -233,7 +240,7 @@
         if (subject && subject.isAlive()) {
             const noteData = _Sec_GetBattlerNotes(subject);
 
-            // A1. 攻击特效 (无动画)
+            // A1. 攻击特效
             if (this.isAttack() && noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
@@ -246,7 +253,7 @@
                 }
             }
 
-            // A2. 蓄力释放 (有动画)
+            // A2. 蓄力释放
             const isHpDamageType = item.damage && (item.damage.type === 1 || item.damage.type === 5);
             if ((this.isAttack() || this.isSkill()) && isHpDamageType && noteData) {
                 const releaseMatches = noteData.matchAll(/<蓄力释放[:：]\s*(\d+)\s*[,，]\s*([^>]+)>/gi);
@@ -270,7 +277,6 @@
                                     if (target && (target.isAlive() || !target._collapsed)) {
                                         _Sec_SuppressLog(target);
                                         target.gainHp(-bonusDmg);
-                                        // 注意：删除了 _Sec_RestoreLog 调用，修复 Bug
                                         
                                         target.result().hpDamage = bonusDmg;
                                         target.result().hpAffected = true;
@@ -295,7 +301,7 @@
         if (target && target.result().isHit()) { 
             const targetNote = _Sec_GetBattlerNotes(target);
 
-            // B1. 受击特效 (无动画)
+            // B1. 受击特效
             if (targetNote) {
                 const matches = targetNote.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
@@ -308,7 +314,7 @@
                 }
             }
 
-            // B2. 受击蓄力 (无动画)
+            // B2. 受击蓄力
             if (actualDamage > 0 && targetNote) {
                 const chargeMatches = targetNote.matchAll(/<受击蓄力[:：]\s*(\d+)\s*>/gi);
                 for (const match of chargeMatches) {
@@ -319,7 +325,7 @@
                 }
             }
 
-            // B3. 守护光环 (动画在队友)
+            // B3. 守护光环
             if (actualDamage > 0) {
                 const friends = target.friendsUnit().members();
                 for (const guardian of friends) {
@@ -375,7 +381,7 @@
             }
         }
 
-        // A3. 亡语 (无动画)
+        // A3. 亡语
         if (target && !wasDead && target.isDead()) {
              const noteData = _Sec_GetBattlerNotes(target);
              if (noteData) {
@@ -678,43 +684,126 @@
     };
 
     // ======================================================================
-    // 3. Game_Action.prototype.applyItemUserEffect 挂钩 (处理推拉条)
+    // 3. Game_Action 挂钩 (推拉条)
     // ======================================================================
     const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
     Game_Action.prototype.applyItemUserEffect = function(target) {
         _Game_Action_applyItemUserEffect.call(this, target);
         
-        // 确保 BattleManager.applyTpbTickShift 存在 (依赖 Sec_BattleTimeline)
         if (typeof BattleManager.applyTpbTickShift === 'function') {
             const note = this.item().note;
             
-            // 解析推条 (Delay)
+            // 推条
             const pushMatch = note.match(/<推条[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/);
             if (pushMatch) {
                 const ticks = parseInt(pushMatch[1]);
                 const animId = pushMatch[2] ? parseInt(pushMatch[2]) : 0;
-                
                 BattleManager.applyTpbTickShift(target, ticks);
                 _Sec_PlayAnim(target, animId);
-                console.log(`[Sec] 推条触发: ${target.name()} +${ticks}`);
             }
 
-            // 解析拉条 (Advance)
+            // 拉条
             const pullMatch = note.match(/<拉条[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/);
             if (pullMatch) {
                 const ticks = parseInt(pullMatch[1]);
                 const animId = pullMatch[2] ? parseInt(pullMatch[2]) : 0;
-                
                 BattleManager.applyTpbTickShift(target, -ticks);
                 _Sec_PlayAnim(target, animId);
-                console.log(`[Sec] 拉条触发: ${target.name()} -${ticks}`);
             }
         }
     };
 
     // ======================================================================
-    // 协战与识破
+    // 4. 【核心重构】反应队列系统 (Reaction Queue System)
     // ======================================================================
+    
+    // 初始化队列
+    BattleManager._secReactionQueue = [];
+
+    // 执行队列中的下一个反应
+    BattleManager.processSecReactionQueue = function() {
+        if (this._secReactionQueue.length === 0) return;
+
+        // 取出队首
+        const reaction = this._secReactionQueue.shift();
+        const observer = reaction.observer;
+        
+        console.log(`[Sec] 执行队列反应: ${observer.name()} -> 技能 ${reaction.skillId}`);
+
+        // 【同步执行】不再使用 setTimeout，直接插入行动
+        if (observer.isAlive() && observer.canMove()) {
+            observer.forceAction(reaction.skillId, reaction.targetIndex);
+            
+            // 给生成的行动打上特殊标记，防止无限套娃
+            const actions = observer._actions;
+            if (actions && actions.length > 0) {
+                // forceAction 会 push 到末尾
+                const reactAction = actions[actions.length - 1]; 
+                reactAction._isSecReaction = true;
+            }
+
+            this.forceAction(observer);
+        } else {
+            // 如果角色无法行动，立即尝试下一个，以免卡死队列
+            this.processSecReactionQueue();
+        }
+    };
+
+    // 监听行动结束，驱动队列
+    const _BattleManager_endAction = BattleManager.endAction;
+    BattleManager.endAction = function() {
+        // 【关键修复】在调用原版前捕获引用，因为原版方法可能会清空 this._subject
+        const triggerSubject = this._subject;
+        const triggerAction = this._action;
+        
+        // 执行原版逻辑
+        _BattleManager_endAction.call(this);
+
+        // 1. 如果刚才结束的是一个“反应动作”
+        if (triggerAction && triggerAction._isSecReaction) {
+            // 检查队列是否还有剩余反应
+            if (this._secReactionQueue.length > 0) {
+                this.processSecReactionQueue(); // 继续执行下一个
+            }
+            return; // 无论如何，反应动作本身不再触发新的广播
+        }
+
+        // 2. 如果是“普通动作”，则广播信号，填充队列
+        // 【关键修复】使用捕获的 triggerSubject 进行判断，而不是 this._subject
+        if (triggerSubject && triggerAction) {
+            this._secReactionQueue = []; // 清空上一轮可能残留的垃圾
+            this.broadcastActionSignal(triggerSubject, triggerAction);
+            
+            // 如果收集到了反应，开始执行第一个
+            if (this._secReactionQueue.length > 0) {
+                this.processSecReactionQueue();
+            }
+        }
+    };
+
+    BattleManager.broadcastActionSignal = function(source, action) {
+        // 清除残留的静音标记
+        const allMembers = $gameParty.members().concat($gameTroop.members());
+        allMembers.forEach(b => {
+            b._ignoreMpLog = false;
+            b._ignoreDamageLog = false;
+        });
+
+        for (const observer of allMembers) {
+            if (!observer.isAlive() || !observer.canMove() || observer === source) continue;
+            
+            // D1. 队友协战
+            if (observer.friendsUnit() === source.friendsUnit()) {
+                this.checkSynergy(observer, source, action);
+            }
+            // D2. 敌方识破
+            if (observer.friendsUnit() !== source.friendsUnit()) {
+                this.checkReaction(observer, source, action);
+            }
+        }
+    };
+
+    // 协战检查 (现在只负责 Push 队列)
     BattleManager.checkSynergy = function(observer, source, action) {
         const note = _Sec_GetBattlerNotes(observer);
         const matches = note.matchAll(/<队友协战[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
@@ -736,16 +825,23 @@
                     const randomTarget = source.opponentsUnit().randomTarget();
                     if (randomTarget) targetIndex = randomTarget.index();
                 }
-                console.log(`[Sec] 协战: ${observer.name()}`);
-                setTimeout(() => {
-                    observer.forceAction(skillId, targetIndex);
-                    this.forceAction(observer);
-                }, Sec_Params.synergyDelay);
-                return; 
+                
+                console.log(`[Sec] 协战入队: ${observer.name()} 技能${skillId}`);
+                
+                // Push 到队列
+                this._secReactionQueue.push({
+                    observer: observer,
+                    skillId: skillId,
+                    targetIndex: targetIndex
+                });
+                
+                // 移除 return，允许同一角色多个技能同时触发
+                // return; 
             }
         }
     };
 
+    // 识破检查 (同样只负责 Push)
     BattleManager.checkReaction = function(observer, source, action) {
         const note = _Sec_GetBattlerNotes(observer);
         const matches = note.matchAll(/<敌方识破[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
@@ -766,10 +862,14 @@
                     if ([1, 2, 3, 4, 5, 6].includes(reactionSkill.scope)) targetIndex = source.index();
                     else targetIndex = observer.index();
                 }
-                console.log(`[Sec] 识破: ${observer.name()} 反制`);
-                observer.forceAction(skillId, targetIndex);
-                this.forceAction(observer);
-                return;
+                console.log(`[Sec] 识破入队: ${observer.name()}`);
+                
+                this._secReactionQueue.push({
+                    observer: observer,
+                    skillId: skillId,
+                    targetIndex: targetIndex
+                });
+                // return; // 同样允许连环识破
             }
         }
     };
