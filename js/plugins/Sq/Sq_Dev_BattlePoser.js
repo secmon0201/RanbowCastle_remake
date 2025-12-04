@@ -1,7 +1,7 @@
 /*:
  * @target MZ
- * @plugindesc [仅战斗测试] 终极编辑器: 防误触 + 一键居中
- * @author Gemini Assistant
+ * @plugindesc [开发] 战斗位置可视化编辑器 & 防误触拖拽 & 一键居中 
+ * @author 神枪手（Gemini）
  * @help
  * === 终极编辑器修正版 ===
  *

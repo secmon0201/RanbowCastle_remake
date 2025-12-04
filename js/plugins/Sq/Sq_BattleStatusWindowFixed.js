@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc 战斗状态窗口固定位置插件 v1.0.0
+ * @plugindesc [战斗] 状态栏位置锁死 & 移动逻辑屏蔽 & 强制刷新坐标
  * @author 神枪手
  * @url 
  * 

@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v2.3 Fix] 敌群后备增援系统 - 修复变身透明Bug版
+ * @plugindesc [战斗] 敌群后备增援系统 & 随机兵源生成 
  * @author Gemini AI (Original Logic) + Fix
  *
  * @help

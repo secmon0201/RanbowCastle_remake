@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v2.1.1] 现代风虚拟按键核心 - 完美版
+ * @plugindesc [系统] 现代风虚拟按键核心 & 强制隐藏UI & 可视化编辑
  * @author 神枪手（gemini）
  *
  * @help

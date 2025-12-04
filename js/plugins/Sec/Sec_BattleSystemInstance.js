@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [重构版v3.6.1] 战斗系统实例插件 - 修复版
+ * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
  * @author Secmon (Refactored by Gemini)
  * @version 3.6.1
  *

@@ -4,7 +4,7 @@
 
 /*:
 * @target MZ
-* @plugindesc 增强前视战斗表现效果。
+* @plugindesc [战斗] 超级前视战斗 & 角色动态反馈 & 状态窗口美化
 * @author あわやまたな (Awaya_Matana)
 * @url https://awaya3ji.seesaa.net/
 * @help 您可以在前视图中的演员上显示动画。

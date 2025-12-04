@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc 战斗状态栏优化：自适应脸图 + 自定义图标 + 实时刷新 + 独立状态图层 + 窗口与图标位置全自定义
+ * @plugindesc [战斗] 自适应状态栏 & 独立图标图层 & 自定义窗口布局
  * @author Secmon (Modified for SuperFrontViewMZ TP Control & Position)
  * @version 1.7.1 (Crash Fix)
  *

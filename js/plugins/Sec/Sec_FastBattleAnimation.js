@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc 战斗节奏优化 - 提前伤害结算与流程衔接
+ * @plugindesc [战斗] 提前伤害结算 & 忽略动画等待 & 战斗节奏优化
  * @author Secmon
  * @version 1.0.0
  * @help

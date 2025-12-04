@@ -5,8 +5,8 @@
 
 /*:
  * @target MZ
- * @plugindesc 【MOG系列】战斗目标光标(v2.0) 终极版：修复指令返回时的帮助窗口残留
- * @author Moghunter 汉化：硕明云书 优化：豆包编程助手 & Gemini
+ * @plugindesc [战斗] 自定义战斗光标 & 选中目标显示 & 指令逻辑修正
+ * @author Mog
  * @url https://mogplugins.wordpress.com
  *
  * @param -> GENERAL

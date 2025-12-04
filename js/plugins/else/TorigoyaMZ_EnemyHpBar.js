@@ -1,8 +1,8 @@
 /*---------------------------------------------------------------------------*
- * TorigoyaMZ_EnemyHpBar.js v.1.3.2 (Modified v3)
+ * TorigoyaMZ_EnemyHpBar.js v.1.3.4 (Fix: Icon Distance Conflict)
  *---------------------------------------------------------------------------*
  * 2021/10/10 20:48 (JST)
- * Modified by Gemini to fix State Icon layering and synchronization
+ * Modified by Gemini: Add Icon Position Correction Parameter
  *---------------------------------------------------------------------------*
  * Ruたん ( @ru_shalm )
  * https://torigoya-plugin.rutan.dev
@@ -10,74 +10,34 @@
 
 /*:
  * @target MZ
- * @plugindesc 向敌人显示HP条插件(v.1.3.2 - 图标完美避让版)
- * @author Ruたん（ru_shalm）
+ * @plugindesc [战斗] 敌人HP血条显示 & 打击感 & 状态图标距离修正
+ * @author Ruたん（ru_shalm） & Gemini
  * @license public domain
- * @version 1.3.2
+ * @version 1.3.4
  * @url https://raw.githubusercontent.com/rutan/torigoya-rpg-maker-plugin/gh-pages/TorigoyaMZ_EnemyHpBar.js
  * @help
- * 敌人HP条显示插件 (v.1.3.2)
+ * 敌人HP条显示插件 (v.1.3.4 - 图标距离修复版)
  * https://torigoya-plugin.rutan.dev
  *
  * 向敌人角色显示HP条
  *
- * * 【修改说明 (v3)】
- * 此版本已由 AI 深度修改，解决了图标重叠和抖动问题：
- * 1. 同步更新：确保状态图标的位置在血条位置确定后立即更新，防止因呼吸动画产生的错位。
- * 2. 强制避让：当血条显示在头顶时，状态图标会自动向上移动，留出安全距离。
- * 3. 距离调整：增加了默认间距，视觉上更舒适。
+ * * 【v.1.3.4 修改说明 - 解决图标距离过远问题】
+ * 1. 新增【状态图标】设置分组。
+ * 2. 增加了 [位置修正 Y] 参数。
+ * 原本插件强制将图标上移约36像素，导致配合其他UI插件时距离过远。
+ * 现在你可以通过调整这个数字来拉近图标和血条的距离。
  *
  * ------------------------------------------------------------
  * ■ 使用方法
  * ------------------------------------------------------------
- * 只需放入此插件即可！
- * 详细显示效果可在插件设置中修改。
+ * 1. 在插件参数 -> [状态图标] -> [位置修正 Y] 中调整数值。
+ * 默认是 -36 (原版距离)。
+ * 如果你觉得太远，试着改成 -15 或 -10。
  *
  * ------------------------------------------------------------
  * ■ 想对敌方角色进行个别设置！
  * ------------------------------------------------------------
- * 部分设置可以通过在敌方角色的备注栏中写入指定内容来修改。
- *
- * ▼ 不想向特定敌方角色显示HP条
- * <HP条隐藏>
- *
- * ▼ 想将特定敌方角色的HP条左右移动
- * <HP条X: 100>
- *
- * ※将100改为移动的量，负数会向左移动
- *
- * ▼ 想将特定敌方角色的HP条上下移动
- * <HP条Y: 100>
- *
- * ※将100改为移动的量，负数会向上移动
- *
- * ▼ 想改变特定敌方角色的HP条宽度
- * <HP条宽: 320>
- *
- * ▼ 想改变特定敌方角色的HP条高度
- * <HP条高: 30>
- *
- * ▼ 想将敌方角色的HP值显示为“？？？？？？”
- *
- * <HP显示条件: false>
- *
- * ▼ 不想在HP减半时显示为“？？？？？？”
- *
- * <HP显示条件: a.hp < a.mhp * 0.5>
- *
- * 可以用伤害计算公式等格式写入条件。
- *（a包含敌人信息，b不包含）
- * 条件成立时，以数字显示HP，
- * 不成立时，以插件设置中指定的掩码字符（？？？？？？等）显示。
- *
- * ▼ 一旦不再是“????”，即使条件变化也不恢复！
- *
- * <HP显示条件: a.hp < a.mhp * 0.5>
- * <HP显示状态持续>
- *
- * 像这样添加<HP显示状态持续>的话，
- * 在该场战斗中一旦进入HP显示状态，
- * 就会一直显示HP。
+ * (保留原版所有功能，详细请参考原版帮助)
  *
  * @param base
  * @text ■ 基本设置
@@ -182,6 +142,88 @@
  * @type string
  * @parent customize
  * @default ?????
+ *
+ * @param iconConfig
+ * @text ■ 状态图标 (State Icon)
+ *
+ * @param iconCorrectionY
+ * @text [位置修正 Y]
+ * @desc 调整状态图标相对于血条的垂直距离。
+ * 负数向上移动，正数向下移动。如果觉得太远，请减小负数(如 -10)。
+ * @type number
+ * @parent iconConfig
+ * @min -1000
+ * @max 1000
+ * @default -36
+ *
+ * @param impact
+ * @text ■ 打击感设置 (Impact)
+ *
+ * @param impactLagEnabled
+ * @text [残影] 是否开启
+ * @desc 是否显示HP扣除时的白色缓冲条（残影）。
+ * @type boolean
+ * @parent impact
+ * @on 开启
+ * @off 关闭
+ * @default true
+ *
+ * @param impactLagDelay
+ * @text [残影] 滞留时间
+ * @desc 受到伤害后，残影条停留多少帧才开始减少。
+ * @type number
+ * @parent impact
+ * @min 0
+ * @default 30
+ *
+ * @param impactLagColor
+ * @text [残影] 颜色
+ * @desc 残影条的颜色 (Hex值，如 #ffffff)。
+ * @type string
+ * @parent impact
+ * @default #ffffff
+ *
+ * @param impactShakeEnabled
+ * @text [震动] 是否开启
+ * @desc 受伤时血条是否震动。
+ * @type boolean
+ * @parent impact
+ * @on 开启
+ * @off 关闭
+ * @default true
+ *
+ * @param impactShakePower
+ * @text [震动] 基础强度
+ * @desc 震动的剧烈程度 (像素)。建议 5-10。
+ * @type number
+ * @parent impact
+ * @min 0
+ * @default 5
+ *
+ * @param impactShakeDuration
+ * @text [震动] 持续时间
+ * @desc 震动持续的帧数。
+ * @type number
+ * @parent impact
+ * @min 0
+ * @default 20
+ *
+ * @param impactFlashEnabled
+ * @text [闪烁] 是否开启
+ * @desc 受伤瞬间血条是否闪白。
+ * @type boolean
+ * @parent impact
+ * @on 开启
+ * @off 关闭
+ * @default true
+ *
+ * @param impactFlashDuration
+ * @text [闪烁] 持续时间
+ * @desc 闪白持续的帧数。
+ * @type number
+ * @parent impact
+ * @min 0
+ * @default 12
  */
 
 (function () {
@@ -211,7 +253,7 @@
     function readParameter() {
         const parameter = PluginManager.parameters(getPluginName());
         return {
-            version: '1.3.2',
+            version: '1.3.4',
             basePosition: pickStringValueFromParameter(parameter, 'basePosition', 'top'),
             basePosX: pickIntegerValueFromParameter(parameter, 'basePosX', 0),
             basePosY: pickIntegerValueFromParameter(parameter, 'basePosY', 0),
@@ -223,6 +265,17 @@
             customizeLabelFontSize: pickIntegerValueFromParameter(parameter, 'customizeLabelFontSize', 16),
             customizeValueFontSize: pickIntegerValueFromParameter(parameter, 'customizeValueFontSize', 20),
             customizeMaskHpValue: pickStringValueFromParameter(parameter, 'customizeMaskHpValue', '?????'),
+            // --- Icon Parameter ---
+            iconCorrectionY: pickIntegerValueFromParameter(parameter, 'iconCorrectionY', -36),
+            // --- Impact Parameters ---
+            impactLagEnabled: pickBooleanValueFromParameter(parameter, 'impactLagEnabled', 'true'),
+            impactLagDelay: pickIntegerValueFromParameter(parameter, 'impactLagDelay', 30),
+            impactLagColor: pickStringValueFromParameter(parameter, 'impactLagColor', '#ffffff'),
+            impactShakeEnabled: pickBooleanValueFromParameter(parameter, 'impactShakeEnabled', 'true'),
+            impactShakePower: pickIntegerValueFromParameter(parameter, 'impactShakePower', 5),
+            impactShakeDuration: pickIntegerValueFromParameter(parameter, 'impactShakeDuration', 20),
+            impactFlashEnabled: pickBooleanValueFromParameter(parameter, 'impactFlashEnabled', 'true'),
+            impactFlashDuration: pickIntegerValueFromParameter(parameter, 'impactFlashDuration', 12),
         };
     }
 
@@ -286,6 +339,14 @@
         constructor() {
             super();
             this._durationWait = 0;
+            // -- 打击感参数初始化 --
+            this._lagValue = 0;        // 残影（白条）的当前值
+            this._lagDelay = 0;        // 残影延迟开始减少的计数器
+            this._shakeTime = 0;       // 震动时间
+            this._shakePower = 0;      // 震动强度
+            this._shakeX = 0;          // X轴震动偏移
+            this._shakeY = 0;          // Y轴震动偏移
+            this._flashTime = 0;       // 闪烁时间
         }
 
         setup(battler, statusType) {
@@ -293,6 +354,7 @@
             this._battler = battler;
             this.reCreateBitmap();
             super.setup(battler, statusType);
+            this._lagValue = this.currentValue();
         }
 
         reCreateBitmap() {
@@ -306,8 +368,6 @@
         }
 
         bitmapHeight() {
-            // 适配核心脚本v.1.3.3的以下修正
-            // > 修复HP（等）使用部分英文字符时显示不全的问题
             if (Sprite_Gauge.prototype.textHeight) {
                 return Math.round(this.textHeight() * 1.5);
             } else {
@@ -353,13 +413,91 @@
             return Torigoya.EnemyHpBar.parameter.customizeValueFontSize;
         }
 
-        updateTargetValue(value, maxValue) {
-            const oldDuration = this._duration;
+        update() {
+            super.update();
+            this.updateShake();
+            this.updateLag();
+            this.updateFlash();
+        }
 
+        updateTargetValue(value, maxValue) {
+            const oldValue = this._value;
+            const oldTarget = this._targetValue;
+
+            if (value < oldValue && value < oldTarget) {
+                this.triggerDamageEffect(oldValue - value);
+            }
+
+            const oldDuration = this._duration;
             super.updateTargetValue(value, maxValue);
 
             if (oldDuration !== this._duration && BattleManager._phase !== '') {
                 this._durationWait = this.durationWait();
+            }
+        }
+
+        // 触发受击特效
+        triggerDamageEffect(diff) {
+            const p = Torigoya.EnemyHpBar.parameter;
+
+            // 1. 设置震动
+            if (p.impactShakeEnabled) {
+                this._shakeTime = p.impactShakeDuration;
+                // 计算震动力度：基于基础力度，根据伤害比例轻微浮动，但不超过基础力度的2倍
+                const basePower = p.impactShakePower;
+                const ratio = diff / this._maxValue;
+                this._shakePower = Math.min(basePower + (ratio * 100), basePower * 2);
+            }
+
+            // 2. 设置残影延迟
+            if (p.impactLagEnabled) {
+                this._lagDelay = p.impactLagDelay;
+            }
+
+            // 3. 设置闪烁
+            if (p.impactFlashEnabled) {
+                this._flashTime = p.impactFlashDuration;
+            }
+        }
+
+        updateShake() {
+            if (this._shakeTime > 0) {
+                this._shakeTime--;
+                this._shakeX = (Math.random() - 0.5) * this._shakePower;
+                this._shakeY = (Math.random() - 0.5) * this._shakePower;
+            } else {
+                this._shakeX = 0;
+                this._shakeY = 0;
+            }
+        }
+
+        updateFlash() {
+            if (this._flashTime > 0) {
+                this._flashTime--;
+                const maxDuration = Torigoya.EnemyHpBar.parameter.impactFlashDuration;
+                const intensity = (this._flashTime / maxDuration) * 200;
+                this.setBlendColor([255, 255, 255, intensity]);
+            } else {
+                this.setBlendColor([0, 0, 0, 0]);
+            }
+        }
+
+        updateLag() {
+            if (!Torigoya.EnemyHpBar.parameter.impactLagEnabled) return;
+
+            if (this._lagValue > this._value) {
+                if (this._lagDelay > 0) {
+                    this._lagDelay--;
+                } else {
+                    const diff = this._lagValue - this._value;
+                    const speed = Math.max(diff / 10, 0.5); 
+                    this._lagValue -= speed;
+                    if (this._lagValue < this._value) this._lagValue = this._value;
+                    this.redraw(); 
+                }
+            } else if (this._lagValue < this._value) {
+                this._lagValue = this._value;
+                this.redraw();
             }
         }
 
@@ -370,8 +508,38 @@
             }
         }
 
+        drawGaugeRect(x, y, width, height) {
+            const max = this.currentMaxValue();
+            const value = this.currentValue();
+            
+            // 使用残影值（如果开启），否则使用当前值
+            const lagEnabled = Torigoya.EnemyHpBar.parameter.impactLagEnabled;
+            const lag = lagEnabled ? this._lagValue : value;
+
+            if (max <= 0) return;
+
+            const rateCurrent = value / max;
+            const rateLag = lag / max;
+
+            const fillW_Current = Math.floor((width - 2) * rateCurrent);
+            const fillW_Lag = Math.floor((width - 2) * rateLag);
+            const fillH = height - 2;
+
+            const color0 = this.gaugeBackColor();
+            const color1 = this.gaugeColor1();
+            const color2 = this.gaugeColor2();
+            const colorLag = Torigoya.EnemyHpBar.parameter.impactLagColor;
+
+            this.bitmap.fillRect(x, y, width, height, color0);
+
+            if (lagEnabled && fillW_Lag > fillW_Current) {
+                this.bitmap.fillRect(x + 1, y + 1, fillW_Lag, fillH, colorLag);
+            }
+
+            this.bitmap.gradientFillRect(x + 1, y + 1, fillW_Current, fillH, color1, color2);
+        }
+
         drawLabel() {
-            //if (!Torigoya.EnemyHpBar.parameter.customizeDrawLabel) return;
             //super.drawLabel();
         }
 
@@ -419,6 +587,9 @@
 
             return false;
         }
+        
+        getShakeX() { return this._shakeX; }
+        getShakeY() { return this._shakeY; }
     }
 
     Torigoya.EnemyHpBar.Sprite_EnemyHpGauge = Sprite_EnemyHpGauge;
@@ -435,7 +606,6 @@
             this._torigoyaEnemyHpBar_gaugeSprite.anchor.x = 0.5;
             this._torigoyaEnemyHpBar_gaugeSprite.opacity = 0;
             
-            // --- 修正图层顺序：确保血条在状态图标下面，防止遮挡 ---
             const iconIndex = this.getChildIndex(this._stateIconSprite);
             if (iconIndex >= 0) {
                 this.addChildAt(this._torigoyaEnemyHpBar_gaugeSprite, iconIndex);
@@ -458,38 +628,36 @@
             }
         };
 
-        // --- 核心修正逻辑 ---
-        // 我们不在 updateStateIconSprite 中调整位置，因为那个方法执行得太早。
-        // 我们在 HP 条的位置计算完毕后，强制覆盖状态图标的位置。
-        
         Sprite_Enemy.prototype.torigoyaEnemyHpBar_updateGaugeSprite = function () {
-            // 1. 更新 HP 条位置
-            this._torigoyaEnemyHpBar_gaugeSprite.x = this.torigoyaEnemyHpBar_posX();
-            this._torigoyaEnemyHpBar_gaugeSprite.y = this.torigoyaEnemyHpBar_posY();
+            let x = this.torigoyaEnemyHpBar_posX();
+            let y = this.torigoyaEnemyHpBar_posY();
+
+            if (Torigoya.EnemyHpBar.parameter.impactShakeEnabled) {
+                x += this._torigoyaEnemyHpBar_gaugeSprite.getShakeX();
+                y += this._torigoyaEnemyHpBar_gaugeSprite.getShakeY();
+            }
+
+            this._torigoyaEnemyHpBar_gaugeSprite.x = x;
+            this._torigoyaEnemyHpBar_gaugeSprite.y = y;
 
             this._torigoyaEnemyHpBar_gaugeSprite.opacity += this._torigoyaEnemyHpBar_gaugeSprite.shouldShow()
                 ? 48
                 : -48;
             
-            // 2. 紧接着更新状态图标位置 (Fix position overlap)
             this.torigoyaEnemyHpBar_fixStateIconPosition();
         };
         
-        // 新增：强制修正状态图标位置的方法
+        // --- 核心修复逻辑 ---
         Sprite_Enemy.prototype.torigoyaEnemyHpBar_fixStateIconPosition = function() {
-            // 只有当插件配置为“显示在顶部”且 HP 条处于显示状态时才生效
             if (Torigoya.EnemyHpBar.parameter.basePosition === 'top' &&
                 this._torigoyaEnemyHpBar_gaugeSprite.shouldShow() &&
                 this._stateIconSprite) {
                 
-                const barY = this._torigoyaEnemyHpBar_gaugeSprite.y;
-                // MZ 默认状态图标是 32x32，锚点 0.5。
-                // 我们要让图标的底部 (y + 16) 位于血条上方。
-                const iconHalfHeight = 16; 
-                const spacing = 20; // 增加间距到 20 像素，确保清晰
+                const baseBarY = this.torigoyaEnemyHpBar_posY();
+                // 使用参数控制的偏移量，替代原来写死的 16+20
+                const correction = Torigoya.EnemyHpBar.parameter.iconCorrectionY; 
                 
-                // 将图标移动到血条上方
-                this._stateIconSprite.y = barY - iconHalfHeight - spacing;
+                this._stateIconSprite.y = baseBarY + correction;
             }
         };
 

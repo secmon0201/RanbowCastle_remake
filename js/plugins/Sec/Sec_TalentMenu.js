@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [合集] 天赋菜单系统 - 原版窗口风格修复版
+ * @plugindesc [系统] 天赋菜单系统 & SP管理 & 原版风格修复
  * @author Secmon
  * @version 1.1.0 (Style Revert)
  * @help

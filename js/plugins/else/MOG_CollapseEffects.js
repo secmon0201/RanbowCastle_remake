@@ -4,7 +4,7 @@
 
 /*:
  * @target MZ
- * @plugindesc (v1.0) MOG战斗崩溃动画效果
+ * @plugindesc [战斗] 敌人死亡崩溃特效 & 破碎切片溶解 & 技能独立指定
  * @author Moghunter
  * @url https://mogplugins.wordpress.com
  *

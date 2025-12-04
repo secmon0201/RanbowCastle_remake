@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v2.4] J2ME风格通知窗口 (自动监听+手动指令+双向音效)
+ * @plugindesc [系统] 自动获取物品提示 & 手动弹窗指令 & 独立开关音效
  * @author 神枪手
  *
  * @help

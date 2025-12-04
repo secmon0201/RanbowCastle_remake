@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [界面] 战斗窗口位置自定义调整插件
+ * @plugindesc [战斗] 全窗口位置重构 & 消息日志UI调整 & 状态栏头像优化
  * @author 神枪手
  * @version 1.0
  *

@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc 模拟崩铁物品菜单 可以写小作文
+ * @plugindesc [界面] 仿崩铁物品菜单 & 物品故事详情 & 自定义大图标
  * @author 神枪手
  * @version 1.1
  * * @param Max Columns (Item Scene)

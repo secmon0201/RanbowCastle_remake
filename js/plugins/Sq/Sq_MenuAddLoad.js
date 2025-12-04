@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [UI综合优化-适配480x854] 菜单读档 + 技能/装备/状态/存档/商店界面重构
+ * @plugindesc [系统] 竖屏菜单界面重构 & 菜单读档功能 & 技能装备状态适配
  * @author 神枪手 & Gemini
  * * @param enableLoadCommand
  * @text 启用菜单读档功能

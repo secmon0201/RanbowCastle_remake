@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [Sec] 综合图鉴系统 (最终完整版)
+ * @plugindesc [系统] 综合图鉴 & 自定义帮助 & 竖屏布局适配
  * @author Secmon
  * 
  * @param menuCommandName

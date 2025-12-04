@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v3.0] 战斗时间轴 - 推拉条预览增强版
+ * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
