@@ -1,7 +1,7 @@
 /*:
  * @target MZ
  * @plugindesc [v2.4] J2ME风格通知窗口 (自动监听+手动指令+双向音效)
- * @author RpgmakerMz插件开发大师
+ * @author 神枪手
  *
  * @help
  * ============================================================================
@@ -138,7 +138,7 @@
  */
 
 (() => {
-    const pluginName = "JSq_AutoNotify";
+    const pluginName = "Sq_AutoNotify";
     const parameters = PluginManager.parameters(pluginName);
     const defaultDuration = Number(parameters['defaultDuration'] || 90);
     const customFontSize = Number(parameters['fontSize'] || 24);
