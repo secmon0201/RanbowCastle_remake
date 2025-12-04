@@ -28,5 +28,6 @@ var $plugins =
 {"name":"Sq/Sq_Dev_BattlePoser","status":true,"description":"[仅战斗测试] 终极编辑器: 防误触 + 一键居中","parameters":{}},
 {"name":"Sq/Sq_SuperFrontbanMp","status":false,"description":"[补丁] 战斗中不显示MP伤害/恢复数字","parameters":{}},
 {"name":"Sec/Sec_Encyclopedia","status":true,"description":"[Sec] 综合图鉴系统 (最终完整版)","parameters":{"menuCommandName":"图鉴"}},
-{"name":"Sq/Sq_SimpleReinforcements","status":true,"description":"[v2.2] 敌群后备增援系统 - 让战斗如潮水般涌来","parameters":{}}
+{"name":"Sq/Sq_SimpleReinforcements","status":true,"description":"[v2.2] 敌群后备增援系统 - 让战斗如潮水般涌来","parameters":{}},
+{"name":"Sq/Sq_AutoNotify","status":true,"description":"[v2.4] J2ME风格通知窗口 (自动监听+手动指令+双向音效)","parameters":{"defaultDuration":"90","fontSize":"24","--- Open Sound ---":"","enableOpenSound":"true","openSound":"{\"name\":\"Item3\",\"volume\":\"90\",\"pitch\":\"100\",\"pan\":\"0\"}","--- Close Sound ---":"","enableCloseSound":"true","closeSound":"{\"name\":\"Cancel1\",\"volume\":\"90\",\"pitch\":\"100\",\"pan\":\"0\"}"}}
 ];
