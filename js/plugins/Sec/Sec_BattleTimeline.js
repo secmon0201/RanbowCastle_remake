@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [v2.6] 战斗时间轴 - 幽灵锁死与多目标联动版
+ * @plugindesc [v3.0] 战斗时间轴 - 推拉条预览增强版
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
@@ -14,20 +14,20 @@
  * 【核心功能】
  * 1. 实时预测：基于速度(AGI)和充能进度，实时演算未来回合顺序。
  * 2. 丝滑动画：图标移动、缩放、进场、退场均有平滑的插值动画。
- * 3. 死亡反馈：角色死亡时图标原位闪烁 -> 留空 -> 后方补位，无视觉抖动。
- * 4. 目标联动：选择技能目标时，时间轴上对应的单位图标会下沉提示。
- *
- * 【依赖插件】
- * 本插件依赖 Sec_CustomDrawBattleStatus.js 获取脸图位置信息。
- * 请确保本插件在插件列表中位于 Sec_CustomDrawBattleStatus 之下。
+ * 3. 死亡反馈：角色死亡时图标原位闪烁 -> 留空 -> 后方补位。
+ * 4. 时间膨胀：通过分辨率参数放大时间数值，避免数值重复。
+ * 5. [v3.0] 推拉预览：选择推条/拉条技能时，时间轴会实时演示图标位置变化。
  *
  * ============================================================================
  * 更新日志
  * ============================================================================
- * v2.6:
- * - 优化注释规范。
- * - 修复特定情况下读取 scope 报错的问题。
- * - 完善幽灵锁死算法，彻底消除死亡时的排版抖动。
+ * v3.0:
+ * - 新增：推拉条机制的底层支持与实时预览功能。
+ * - 开放：BattleManager.applyTpbTickShift 供技能系统调用。
+ * v2.9:
+ * - 新增：[时间数字大小] 参数。
+ * v2.8:
+ * - 新增 [时间分辨率] 参数。
  *
  * ============================================================================
  *
@@ -93,6 +93,13 @@
  * @type number
  * @default 17
  *
+ * @param TimeResolution
+ * @text 时间分辨率 (倍率)
+ * @parent ---Settings---
+ * @desc 核心参数！将默认的时间单位放大多少倍。建议 10~60。
+ * @type number
+ * @default 10
+ *
  * @param ---Appearance---
  * @text === 外观设置 ===
  * @default
@@ -118,6 +125,12 @@
  * @type number
  * @decimals 2
  * @default 0.80
+ * * @param TimeFontSize
+ * @text 时间数字大小
+ * @parent ---Appearance---
+ * @desc 图标右下角剩余时间数字的字号。
+ * @type number
+ * @default 12
  */
 
 (() => {
@@ -126,9 +139,6 @@
     const pluginName = "Sec_BattleTimeline";
     const parameters = PluginManager.parameters(pluginName);
     
-    // ========================================================================
-    //  配置参数读取
-    // ========================================================================
     const Conf = {
         x: Number(parameters['TimelineX'] || 80),
         y: Number(parameters['TimelineY'] === undefined ? 210 : parameters['TimelineY']),
@@ -138,35 +148,25 @@
         spacing: Number(parameters['IconSpacing'] || 0),
         sinkY: Number(parameters['SelectionSinkY'] || 8),
         maxPred: Number(parameters['MaxPrediction'] || 17),
+        timeRes: Number(parameters['TimeResolution'] || 10), 
         showBg: parameters['ShowBackgroundBox'] === 'true',
         borderColor: parameters['BoxBorderColor'] || "#490C23",
         enemyScale: Number(parameters['EnemyScale'] || 0.8),
-        animSpeed: 0.15 // 动画插值速度 (0.0-1.0)，越小越平滑但延迟越高
+        timeFontSize: Number(parameters['TimeFontSize'] || 12),
+        animSpeed: 0.15 
     };
 
-    /**
-     * 自动计算时间轴 Y 坐标
-     * @description 如果 TimelineY 设为 -1，则尝试根据 Sec_CustomDrawBattleStatus 的脸图位置进行定位。
-     * @returns {number} 计算出的 Y 坐标
-     */
     function getAutoY() {
         const SecStatusParams = PluginManager.parameters('Sec_CustomDrawBattleStatus');
         if (SecStatusParams && Object.keys(SecStatusParams).length > 0) {
             const winY = Number(SecStatusParams['WindowY'] || 450);
             const faceScale = Number(SecStatusParams['FaceScale'] || 1.0);
-            const faceOffsetY = Number(SecStatusParams['FaceOffsetY'] || 0);
-            // 估算脸图实际高度
             const estFaceSize = Math.floor((ImageManager.faceWidth || 144) * faceScale);
-            return winY + faceOffsetY + estFaceSize + 10; 
+            return winY + 10 + estFaceSize + 10; 
         }
-        return 200; // 默认回退值
+        return 200; 
     }
 
-    // ========================================================================
-    //  Game_Battler 扩展
-    // ========================================================================
-    
-    // 捕获单位死亡事件，通知时间轴播放死亡动画
     const _Game_Battler_performCollapse = Game_Battler.prototype.performCollapse;
     Game_Battler.prototype.performCollapse = function() {
         _Game_Battler_performCollapse.call(this);
@@ -176,78 +176,134 @@
     };
 
     // ========================================================================
-    //  BattleManager 扩展：预测引擎
+    //  BattleManager 扩展：预测引擎 (核心修改)
     // ========================================================================
     
-    // 存储计算好的预测列表 [{battler, isReady}, ...]
     BattleManager._predictedTimeline = [];
 
-    /**
-     * 计算单位到达行动点 (TPB=1.0) 所需的时间 Tick 数
-     * @param {Game_Battler} battler 目标单位
-     * @returns {number} 所需 Ticks
-     */
+    // [v3.0] 开放参数供外部使用
+    BattleManager.getTpbResolution = function() {
+        return Conf.timeRes;
+    };
+
+    // [v3.0] 实际执行推拉条 (改变 TPB Charge)
+    // ticks > 0: 推条(Delay), ticks < 0: 拉条(Advance)
+    BattleManager.applyTpbTickShift = function(target, ticks) {
+        if (!target) return;
+        const speed = target.tpbSpeed();
+        if (speed === 0) return;
+        const refTime = this.isActiveTpb() ? 240 : 60;
+        const acceleration = speed / refTime;
+        
+        // 公式：deltaCharge = -deltaTicks * acc / res
+        // 增加 Tick (推条) = 减少 Charge
+        // 减少 Tick (拉条) = 增加 Charge
+        const deltaCharge = -(ticks * acceleration / Conf.timeRes);
+        target._tpbChargeTime = Math.max(0, Math.min(1, target._tpbChargeTime + deltaCharge));
+    };
+
+    // [v3.0] 获取当前预览的推拉值
+    BattleManager.getPreviewTpbShift = function(battler) {
+        // 必须处于输入阶段
+        if (!this.isInputting()) return 0;
+        const action = this.inputtingAction();
+        if (!action || !action.item()) return 0;
+
+        const note = action.item().note;
+        let shift = 0;
+
+        // 解析推条 (Delay) -> 增加 ticks
+        const pushMatch = note.match(/<推条[:：]\s*(\d+)/);
+        if (pushMatch) shift += parseInt(pushMatch[1]);
+
+        // 解析拉条 (Advance) -> 减少 ticks
+        const pullMatch = note.match(/<拉条[:：]\s*(\d+)/);
+        if (pullMatch) shift -= parseInt(pullMatch[1]);
+
+        if (shift === 0) return 0;
+
+        // 判断 battler 是否被选中
+        const scene = SceneManager._scene;
+        if (!(scene instanceof Scene_Battle)) return 0;
+
+        let isSelected = false;
+        
+        // 检查敌人窗口
+        if (scene._enemyWindow && scene._enemyWindow.active) {
+            if (action.isForAll()) {
+                if (battler.isEnemy()) isSelected = true;
+            } else {
+                if (scene._enemyWindow.enemy() === battler) isSelected = true;
+            }
+        }
+        // 检查队友窗口
+        else if (scene._actorWindow && scene._actorWindow.active) {
+            if (action.isForAll()) {
+                if (battler.isActor()) isSelected = true;
+            } else {
+                const index = scene._actorWindow.index();
+                if (index >= 0 && $gameParty.battleMembers()[index] === battler) isSelected = true;
+            }
+        }
+
+        return isSelected ? shift : 0;
+    };
+
     BattleManager.tpbTicksToReady = function(battler) {
         if (battler.isTpbReady() || battler.isTpbCharged() || battler._tpbState === 'acting') {
-            return 0; // 已就绪，时间为0
+            return 0; 
         }
         
         let needed = 0;
         const speed = battler.tpbSpeed();
-        if (speed === 0) return 9999; // 防止除以0
+        if (speed === 0) return 99999; 
 
         const refTime = this.isActiveTpb() ? 240 : 60;
         const acceleration = speed / refTime;
 
         if (battler._tpbState === 'casting') {
-            // 吟唱中：计算剩余吟唱时间
             needed = (battler.tpbRequiredCastTime() - battler._tpbCastTime) / acceleration;
         } else {
-            // 充能中：计算剩余充能时间
             needed = (1.0 - battler._tpbChargeTime) / acceleration;
         }
         
-        return Math.max(0, needed);
+        return Math.max(0, needed) * Conf.timeRes;
     };
 
-    /**
-     * 计算单位跑完一整圈 (0% -> 100%) 所需的时间 Tick 数
-     * @param {Game_Battler} battler 目标单位
-     * @returns {number} 完整周期 Ticks
-     */
     BattleManager.tpbTicksFullCycle = function(battler) {
         const speed = battler.tpbSpeed();
-        if (speed === 0) return 9999;
+        if (speed === 0) return 99999;
         const refTime = this.isActiveTpb() ? 240 : 60;
         const acceleration = speed / refTime;
-        return 1.0 / acceleration;
+        return (1.0 / acceleration) * Conf.timeRes;
     };
 
-    /**
-     * 更新时间轴预测列表
-     * @description 使用模拟算法预测未来 N 个回合的行动顺序。
-     */
     BattleManager.updateTimelinePrediction = function() {
         if (!this.isTpb()) return;
 
-        // 1. 获取所有存活且可见的单位
         const allBattlers = this.allBattleMembers().filter(b => b.isAlive() && b.isAppeared());
         
-        // 2. 初始化模拟状态
-        let simState = allBattlers.map(b => ({
-            battler: b,
-            ticksNeeded: this.tpbTicksToReady(b),
-            fullCycle: this.tpbTicksFullCycle(b)
-        }));
+        let simState = allBattlers.map(b => {
+            // [v3.0] 在基础时间上叠加预览偏移量
+            const baseTicks = this.tpbTicksToReady(b);
+            const previewShift = this.getPreviewTpbShift(b);
+            // 确保不会变成负数（实际上拉条拉过头就是0，即立即行动）
+            const finalTicks = Math.max(0, baseTicks + previewShift);
+
+            return {
+                battler: b,
+                ticksNeeded: finalTicks,
+                fullCycle: this.tpbTicksFullCycle(b)
+            };
+        });
 
         const prediction = [];
         let predictionCount = 0;
+        let simTimeAccumulator = 0;
 
-        // 3. 优先处理已就绪单位 (Ticks <= 0)
-        const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.0001);
-        // 按索引排序以保证稳定性
+        const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.1);
         readyBattlers.sort((a, b) => {
-            if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.0001) {
+            if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.1) {
                 return a.battler.index() - b.battler.index();
             }
             return a.ticksNeeded - b.ticksNeeded;
@@ -255,37 +311,36 @@
 
         readyBattlers.forEach(s => {
             if (predictionCount < Conf.maxPred) {
-                prediction.push({ battler: s.battler, isReady: true });
+                prediction.push({ battler: s.battler, isReady: true, ticks: 0 });
                 predictionCount++;
-                // 模拟行动后，该单位需要跑完一整圈才能再次行动
                 s.ticksNeeded += s.fullCycle;
             }
         });
 
-        // 4. 模拟未来回合 (时间轮算法)
         while (predictionCount < Conf.maxPred) {
-            // 找出最快到达行动点的单位
             simState.sort((a, b) => a.ticksNeeded - b.ticksNeeded);
             const winner = simState[0];
             
-            if (!winner) break; // 防止异常
+            if (!winner) break; 
 
-            // 推进时间
             const elapsed = winner.ticksNeeded;
+            simTimeAccumulator += elapsed;
+
             simState.forEach(s => s.ticksNeeded -= elapsed);
 
-            // 记录预测结果
-            prediction.push({ battler: winner.battler, isReady: false });
+            prediction.push({ 
+                battler: winner.battler, 
+                isReady: false, 
+                ticks: Math.round(simTimeAccumulator) 
+            });
             predictionCount++;
 
-            // 重置赢家状态
             winner.ticksNeeded = winner.fullCycle;
         }
 
         this._predictedTimeline = prediction;
     };
 
-    // 挂钩 Update 循环
     const _BattleManager_update = BattleManager.update;
     BattleManager.update = function(timeActive) {
         _BattleManager_update.call(this, timeActive);
@@ -295,37 +350,30 @@
     };
 
     // ========================================================================
-    //  UI 组件：VisualItem
+    //  UI 组件
     // ========================================================================
     
-    /**
-     * 视觉对象类
-     * @description 管理单个图标的动画状态（位置、大小、透明度、幽灵计时）。
-     */
     class VisualItem {
         constructor(battler, x, y, size) {
             this.battler = battler;
-            // 当前渲染属性
             this.x = x;
             this.y = y;
             this.size = size;
-            this.opacity = 0; // 初始透明，产生淡入效果
+            this.opacity = 0; 
             
-            // 目标属性 (动画终点)
             this.targetX = x;
             this.targetY = y;
             this.targetSize = size;
             this.targetOpacity = 255;
             
-            // 状态标记
-            this.isGhost = false;   // 是否为死亡幽灵
-            this.ghostTimer = 0;    // 幽灵倒计时
-            this.isReady = false;   // 是否处于就绪状态
-            this.matched = false;   // 本帧是否匹配到了预测数据
+            this.isGhost = false;
+            this.ghostTimer = 0;
+            this.isReady = false;
+            this.matched = false;
+            this.ticks = 0;
         }
 
         update() {
-            // 平滑插值动画 (Lerp)
             const spd = Conf.animSpeed;
             this.x += (this.targetX - this.x) * spd;
             this.y += (this.targetY - this.y) * spd;
@@ -338,69 +386,43 @@
         }
     }
 
-    // ========================================================================
-    //  UI 组件：Window_BattleTimeline
-    // ========================================================================
-
     class Window_BattleTimeline extends Window_Base {
         constructor(rect) {
             super(rect);
-            this.padding = 0; // 移除内边距，确保绘图区域最大化
-            this.createContents(); // 重建画布
-            this.setBackgroundType(2); // 背景全透明
-            
-            this._visualItems = []; // 视觉对象池
+            this.padding = 0; 
+            this.createContents();
+            this.setBackgroundType(2); 
+            this._visualItems = []; 
         }
 
-        /**
-         * 获取当前玩家选中的目标列表
-         * @returns {Array<Game_Battler>} 选中的目标数组
-         */
         getCurrentSelection() {
             const scene = SceneManager._scene;
             if (!(scene instanceof Scene_Battle)) return [];
             
             const action = BattleManager.inputtingAction();
-            // 安全检查：防止 action 或 item 为空导致崩溃
             const isForAll = (action && action.item()) ? action.isForAll() : false;
 
-            // 1. 敌人选择窗口激活
             if (scene._enemyWindow && scene._enemyWindow.active) {
-                if (isForAll) {
-                    return $gameTroop.aliveMembers();
-                } else {
-                    const enemy = scene._enemyWindow.enemy();
-                    return enemy ? [enemy] : [];
-                }
+                if (isForAll) return $gameTroop.aliveMembers();
+                const enemy = scene._enemyWindow.enemy();
+                return enemy ? [enemy] : [];
             }
             
-            // 2. 角色选择窗口激活
             if (scene._actorWindow && scene._actorWindow.active) {
-                if (isForAll) {
-                    return $gameParty.battleMembers();
-                } else {
-                    const index = scene._actorWindow.index();
-                    if (index >= 0) {
-                        return [$gameParty.battleMembers()[index]];
-                    }
-                }
+                if (isForAll) return $gameParty.battleMembers();
+                const index = scene._actorWindow.index();
+                if (index >= 0) return [$gameParty.battleMembers()[index]];
             }
             
             return [];
         }
 
-        /**
-         * 响应单位死亡事件
-         * @param {Game_Battler} battler 死亡的单位
-         */
         onBattlerDeath(battler) {
-            // 将所有关联该单位的图标转为幽灵
-            // 保持当前位置不变，开始倒计时
             for (let i = this._visualItems.length - 1; i >= 0; i--) {
                 const item = this._visualItems[i];
                 if (item.battler === battler && !item.isGhost) {
                     item.isGhost = true;
-                    item.ghostTimer = 60; // 30帧闪烁 + 30帧留空
+                    item.ghostTimer = 60; 
                 }
             }
         }
@@ -412,27 +434,18 @@
             this.draw();
         }
 
-        /**
-         * 核心排版算法：计算每个图标的目标位置
-         * @description 使用“幽灵锁死 (Slot Locking)”策略防止抖动。
-         */
         updateLayoutTargets() {
             const predList = BattleManager._predictedTimeline || [];
             const selections = this.getCurrentSelection();
 
-            // 1. 重置匹配标记 (仅针对非幽灵)
             this._visualItems.forEach(i => { if(!i.isGhost) i.matched = false; });
 
-            // 2. 整理幽灵列表
             const ghosts = this._visualItems.filter(i => i.isGhost);
-            // 幽灵按当前屏幕 X 坐标排序，确保视觉顺序正确
             ghosts.sort((a, b) => a.x - b.x);
             
-            // 3. 整理活体列表 (生成或复用 VisualItem)
             const liveItems = [];
             const findItem = (battler) => this._visualItems.find(it => it.battler === battler && !it.isGhost && !it.matched);
             
-            // 计算出生点 (屏幕最右侧之外)
             let maxVisualX = 0;
             this._visualItems.forEach(i => maxVisualX = Math.max(maxVisualX, i.x));
             const spawnX = (maxVisualX > 0 ? maxVisualX : 0) + Conf.stdSize + Conf.spacing;
@@ -445,16 +458,15 @@
                 }
                 item.matched = true;
                 item.isReady = pred.isReady;
+                item.ticks = pred.ticks; 
                 liveItems.push(item);
             }
 
-            // 4. 混合分配位置 (核心逻辑)
             let currentX = 4;
-            let slotIndex = 0; // 当前正在填充第几个显示槽位
+            let slotIndex = 0;
             let liveIndex = 0;
             let ghostIndex = 0;
             
-            // 循环填充槽位，直到填满预测深度或没有更多项
             while (liveIndex < liveItems.length || ghostIndex < ghosts.length) {
                 if (slotIndex >= Conf.maxPred + ghosts.length) break;
 
@@ -463,11 +475,8 @@
                 
                 let takenByGhost = null;
                 
-                // 检查当前槽位是否被幽灵“锁死”
                 if (ghostIndex < ghosts.length) {
                     const ghost = ghosts[ghostIndex];
-                    // 判定标准：幽灵的 X 坐标小于当前槽位的中点
-                    // 意味着幽灵在这个槽位或更前面，它拥有优先占位权
                     if (ghost.x < currentX + (slotSize / 2)) {
                         takenByGhost = ghost;
                         ghostIndex++;
@@ -475,14 +484,11 @@
                 }
                 
                 let item = null;
-                
                 if (takenByGhost) {
-                    // 槽位被幽灵占据
                     item = takenByGhost;
                     item.targetX = currentX;
                     item.targetSize = slotSize;
                 } else if (liveIndex < liveItems.length) {
-                    // 槽位空闲，填入预测列表中的下一位
                     item = liveItems[liveIndex];
                     liveIndex++;
                     item.targetX = currentX;
@@ -491,42 +497,29 @@
                     break;
                 }
                 
-                // --- 计算通用目标属性 ---
-                
-                // Y轴下沉逻辑
                 const isSelected = selections.includes(item.battler);
-                // 规则：选中 且 (不是视觉首位 或 是幽灵)
-                // 实际上我们希望：如果是首位且是自己行动，通常不下沉。
-                // 这里的 shouldSink 逻辑：如果是选中的目标，且该图标不是排在第一位的“当前行动者”，则下沉。
-                // 注意：如果幽灵卡在第一位，它也会被判定为 isFirst。
                 const shouldSink = isSelected && !isFirst; 
                 
                 item.targetY = 4 + (shouldSink ? Conf.sinkY : 0);
                 
-                // 透明度逻辑
                 if (item.isGhost) {
-                    // 幽灵阶段二(timer<=30)时不可见，但仍占位
                     item.targetOpacity = (item.ghostTimer > 30) ? 255 : 0; 
                 } else {
                     item.targetOpacity = 255;
                 }
                 
-                // 移动 X 指针到下一格
                 currentX += slotSize + Conf.spacing;
                 slotIndex++;
             }
             
-            // 5. 清理未分配到的项
             this._visualItems.forEach(item => {
                 if (!item.isGhost && !item.matched) {
-                    item.targetOpacity = 0; // 淡出
+                    item.targetOpacity = 0; 
                 }
             });
             
-            // 物理移除垃圾对象
             for (let i = this._visualItems.length - 1; i >= 0; i--) {
                 const item = this._visualItems[i];
-                // 移除条件：(幽灵且倒计时结束) 或 (非幽灵且完全透明)
                 if ((item.isGhost && item.ghostTimer <= 0) || 
                     (!item.isGhost && !item.matched && item.opacity <= 1)) {
                     this._visualItems.splice(i, 1);
@@ -542,13 +535,10 @@
             if (!this.contents) return;
             this.contents.clear();
             
-            // 绘制循环
             for (const item of this._visualItems) {
                 if (item.opacity <= 1) continue;
                 
-                // 闪烁判定：幽灵的前30帧
                 const isFlashing = (item.isGhost && item.ghostTimer > 30);
-                // 首位判定：根据坐标模糊判断
                 const isFirstVisual = (Math.abs(item.x - 4) < 10); 
 
                 this.drawTimelineItem(item, isFlashing, isFirstVisual);
@@ -565,7 +555,6 @@
             ctx.save();
             ctx.globalAlpha = opacity / 255;
 
-            // 1. 背景 (半透明黑底)
             if (Conf.showBg) {
                 ctx.save();
                 ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
@@ -573,14 +562,12 @@
                 ctx.restore();
             }
 
-            // 2. 图标内容
             if (item.battler.isActor()) {
                 this.drawActorIcon(item.battler, x, y, size);
             } else {
                 this.drawEnemyIcon(item.battler, x, y, size);
             }
 
-            // 3. 死亡闪烁层 (白色叠加)
             if (isFlashing) {
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
@@ -590,25 +577,45 @@
                 ctx.restore();
             }
 
-            // 4. 边框绘制
             ctx.save();
             ctx.lineWidth = 1; 
             
             let color = Conf.borderColor; 
             if (isFirstVisual) {
-                color = "#FFCA5F"; // 首位金色
-                ctx.lineWidth = 2; // 首位加粗
+                color = "#FFCA5F"; 
+                ctx.lineWidth = 2; 
             } else if (item.isReady) {
-                color = "#FFFF00"; // 就绪黄色
+                color = "#FFFF00"; 
             }
 
             ctx.strokeStyle = color;
-            // 像素偏移修正 (+0.5) 保证线条锐利
             const offset = ctx.lineWidth / 2;
             ctx.strokeRect(x + offset, y + offset, size - ctx.lineWidth, size - ctx.lineWidth); 
             ctx.restore();
 
-            ctx.restore(); // 恢复 globalAlpha
+            if (typeof item.ticks === 'number' && item.ticks > 0) {
+                this.drawTimeLabel(item.ticks, x, y, size);
+            }
+
+            ctx.restore(); 
+        }
+
+        drawTimeLabel(ticks, x, y, size) {
+            this.contents.fontSize = Conf.timeFontSize; 
+            this.contents.fontBold = true;
+            this.contents.outlineWidth = 3;
+            this.contents.outlineColor = 'rgba(0, 0, 0, 0.8)'; 
+
+            const text = String(ticks);
+            const textWidth = this.textWidth(text);
+            
+            const dx = x + size - textWidth - 2;
+            const dy = y + size - this.contents.fontSize - 4; 
+
+            this.changeTextColor(ColorManager.normalColor());
+            this.drawText(text, dx, dy, textWidth + 5, 'left');
+            
+            this.resetFontSettings(); 
         }
 
         drawActorIcon(actor, x, y, size) {
@@ -649,10 +656,6 @@
         }
     }
 
-    // ========================================================================
-    //  Scene_Battle 扩展：窗口创建
-    // ========================================================================
-
     const _Scene_Battle_createAllWindows = Scene_Battle.prototype.createAllWindows;
     Scene_Battle.prototype.createAllWindows = function() {
         _Scene_Battle_createAllWindows.call(this);
@@ -664,7 +667,6 @@
     Scene_Battle.prototype.createTimelineWindow = function() {
         const w = Conf.width > 0 ? Conf.width : Graphics.boxWidth;
         const maxIconH = Math.max(Conf.firstSize, Conf.stdSize);
-        // 计算窗口高度：图标高度 + 下沉距离 + 缓冲
         const h = maxIconH + Conf.sinkY + 30; 
         
         const x = Conf.x;
@@ -673,7 +675,6 @@
         const rect = new Rectangle(x, y, w, h);
         this._timelineWindow = new Window_BattleTimeline(rect);
         BattleManager._timelineWindow = this._timelineWindow;
-        // 添加到场景的最上层
         this.addWindow(this._timelineWindow);
     };
 
