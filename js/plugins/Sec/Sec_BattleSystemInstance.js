@@ -1,8 +1,8 @@
 /*:
  * @target MZ
- * @plugindesc [重构版v3.6.0] 战斗系统实例插件 - 推拉条机制支持版
+ * @plugindesc [重构版v3.6.1] 战斗系统实例插件 - 修复版
  * @author Secmon (Refactored by Gemini)
- * @version 3.6.0
+ * @version 3.6.1
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -84,13 +84,12 @@
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v3.6.0 (推拉条支持版) ★
+ * ★ 插件功能手册 v3.6.1 (修复版) ★
  * ============================================================================
  * 【更新说明】
- * v3.6.0: 
- * 1. [新增] 推拉条 (Turn Manipulation) 机制支持。
- * 2. [新增] <推条> 和 <拉条> 标签，支持自定义动画。
- * 3. [联动] 配合 Sec_BattleTimeline v3.0 实现选目标时实时预览时间轴变化。
+ * v3.6.1: 
+ * 1. [修复] 移除了代码中残留的 _Sec_RestoreLog 调用，解决了蓄力释放、
+ * 溅射等机制因报错而中断（导致没伤害数字/没动画）的严重 Bug。
  *
  * ============================================================================
  * 一、标签写法速查
@@ -271,6 +270,7 @@
                                     if (target && (target.isAlive() || !target._collapsed)) {
                                         _Sec_SuppressLog(target);
                                         target.gainHp(-bonusDmg);
+                                        // 注意：删除了 _Sec_RestoreLog 调用，修复 Bug
                                         
                                         target.result().hpDamage = bonusDmg;
                                         target.result().hpAffected = true;
@@ -401,12 +401,12 @@
 
         if (!item) return;
 
-        // C 模块省略... (与 v3.5.3 保持一致，无需改动)
-        // ... (请保留原文件中的 C1~C6 模块代码)
-        // 为了方便复制，这里把 C 模块也贴全
+        // ------------------------------------------------------------------
+        // 【模块 C】 技能特效
+        // ------------------------------------------------------------------
+        const note = item.note;
         
         // --- C1. 状态交互 ---
-        const note = item.note;
         const stateInteractMatches = note.matchAll(/<状态交互[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/g);
         for (const match of stateInteractMatches) {
             const stateId = parseInt(match[1]);
