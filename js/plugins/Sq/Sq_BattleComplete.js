@@ -1,21 +1,43 @@
 /*:
  * @target MZ
- * @plugindesc [战斗核心] 绝对阻塞式日志系统 (v3.3) - 解决TPB闪烁
- * @author 神枪手 (Master Architect)
+ * @plugindesc [战斗综合核心] v3.5 完美版 - 修复狂按回车导致窗口消失Bug
+ * @author 神枪手 (Merged by Gemini & Fixed)
  *
- * @param --- General ---
- * @text [基础设置]
+ * @help
+ * ============================================================================
+ * 插件说明 (v3.5 Final)
+ * ============================================================================
+ * 本插件是将以下三个插件合并为一的综合版，功能完全保留：
+ * 1. Sq_BattleUI (全窗口位置重构 & 头像优化)
+ * 2. Sq_BattleWindow (绝对阻塞式日志系统)
+ * 3. Sq_BattleStatusWindowFixed (状态栏位置锁死)
+ * 
+ * ============================================================================
+ * v3.5 修复日志 (针对狂按回车Bug)
+ * ============================================================================
+ * 1. [输入冷冻]：在日志窗口显示时，直接拦截 Window_Command 的 processHandling。
+ *    这意味着此时狂按回车、取消等按键将被完全忽略，防止在窗口隐藏时误触指令。
+ * 2. [视觉看门狗]：增加了强制复位逻辑。如果 BattleManager 认为当前是输入阶段
+ *    但指令窗口不可见，插件会强制将其显示并激活，防止窗口“弄丢”。
+ * 3. [坐标修复]：修复了状态栏固定Y坐标设为0时会被重置为默认值的Bug。
+ *
+ * ============================================================================
+ * 参数设置区域
+ * ============================================================================
+ *
+ * @param --- Battle Log General ---
+ * @text [日志: 基础设置]
  * @default
  *
  * @param battleWindowSkin
- * @parent --- General ---
+ * @parent --- Battle Log General ---
  * @text 窗口皮肤名称
  * @desc 战斗窗口（含日志）使用的皮肤文件名（需放在img/system/）。
  * @default Battlewindow
  * @type string
  *
  * @param --- Battle Log Layout ---
- * @text [日志外观布局]
+ * @text [日志: 外观布局]
  * @default
  *
  * @param logFontSize
@@ -38,7 +60,7 @@
  * @type number
  *
  * @param --- Battle Log Logic ---
- * @text [日志逻辑设置]
+ * @text [日志: 逻辑设置]
  * @default
  *
  * @param logClearDelay
@@ -63,7 +85,7 @@
  * @type number
  *
  * @param --- Text Colors ---
- * @text [文本颜色]
+ * @text [日志: 文本颜色]
  * @default
  *
  * @param actorNameColor
@@ -112,55 +134,61 @@
  * @default 10
  * @type number
  *
- * @help
- * ============================================================================
- * 核心修复说明 (v3.3 绝对阻塞版)
- * ============================================================================
- * 之前的版本是在窗口弹出后尝试隐藏它，这在代码执行速度极快时会导致
- * 一帧的“闪现”。
- *
- * v3.3 采用了全新的逻辑：【切断大脑】
- *
- * 1. 只要日志窗口还在显示（isBlocking 为真）：
- * 插件会直接拦截 Scene_Battle 的 updateBattleProcess。
- *
- * 2. 这意味着 BattleManager（战斗管理器）会完全暂停工作：
- * - 它不会去检查谁的时间条满了。
- * - 它不会去触发 inputStart。
- * - 它根本不会去调用 commandWindow.setup()。
- *
- * 3. 结果：
- * 在日志播放完毕之前，战斗系统处于“冻结”状态。
- * 指令窗口根本没有机会被创建或显示，因此绝对不会闪烁。
- * 只有当日志彻底淡出后，战斗流程恢复，窗口才会正常弹出。
+ * @param --- Status Fixed ---
+ * @text [状态栏固定设置]
+ * @default
+ * * @param fixedX
+ * @parent --- Status Fixed ---
+ * @text 固定X坐标
+ * @desc 状态窗口固定的X坐标位置
+ * @type number
+ * @default 0
+ * * @param fixedY
+ * @parent --- Status Fixed ---
+ * @text 固定Y坐标
+ * @desc 状态窗口固定的Y坐标位置
+ * @type number
+ * @default 0
+ * * @param fixedWidth
+ * @parent --- Status Fixed ---
+ * @text 固定宽度
+ * @desc 状态窗口的固定宽度（留空则使用默认宽度）
+ * @type number
+ * @default 480
+ * * @param fixedHeight
+ * @parent --- Status Fixed ---
+ * @text 固定高度
+ * @desc 状态窗口的固定高度（留空则使用默认高度）
+ * @type number
+ * @default 
  */
 
-(function() {
-    const parameters = PluginManager.parameters('Sq_BattleWindow');
-    const battleWindowSkin = String(parameters['battleWindowSkin'] || 'Battlewindow');
+(() => {
+    // 获取合并后的插件参数
+    const pluginName = "Sq_BattleComplete";
+    const parameters = PluginManager.parameters(pluginName);
+
+    // ========================================================================
+    // ---------------------- MODULE 1: BATTLE LOG (Window) -------------------
+    // ========================================================================
     
-    // 布局与动画
+    // 参数解析 - 日志系统
+    const battleWindowSkin = String(parameters['battleWindowSkin'] || 'Battlewindow');
     const logFontSize = Number(parameters['logFontSize'] || 20);
     const logHeight = Number(parameters['logHeight'] || 70);
     const logBottomOffset = Number(parameters['logBottomOffset'] || 0);
     const logDelay = Number(parameters['logClearDelay'] || 60);
     const fadeInSpeed = Number(parameters['fadeInSpeed'] || 255);
     const fadeOutSpeed = Number(parameters['fadeOutSpeed'] || 25);
-
-    // 颜色
     const colorActor = Number(parameters['actorNameColor'] || 4);
     const colorEnemy = Number(parameters['enemyNameColor'] || 2);
     const colorSkill = Number(parameters['skillNameColor'] || 14);
-
-    // 图标
     const enemyIconSize = Number(parameters['enemyIconSize'] || 24);
     const enemyIconSpace = Number(parameters['enemyIconSpace'] || 2);
     const enemyIconMax = Number(parameters['enemyIconMax'] || 8);
     const enemyIconOffsetY = Number(parameters['enemyIconOffsetY'] || 0);
 
-    // ========================================================================
     // 1. 窗口皮肤加载 (通用)
-    // ========================================================================
     const _loadCustomSkin = function() {
         this.windowskin = ImageManager.loadSystem(battleWindowSkin);
     };
@@ -172,9 +200,7 @@
     Window_MenuCommand.prototype.loadWindowskin  = _loadCustomSkin;
     Window_MenuActor.prototype.loadWindowskin    = _loadCustomSkin;
 
-    // ========================================================================
     // 2. 辅助工具
-    // ========================================================================
     function escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
     }
@@ -200,9 +226,7 @@
         return text;
     }
 
-    // ========================================================================
     // 3. [核心] Window_RainbowLog 
-    // ========================================================================
     function Window_RainbowLog() {
         this.initialize(...arguments);
     }
@@ -213,7 +237,7 @@
     Window_RainbowLog.prototype.initialize = function(rect) {
         Window_Base.prototype.initialize.call(this, rect);
         this.loadWindowskin();
-        this.opacity = 0;         
+        this.opacity = 0;          
         this.contentsOpacity = 0;
         this._lines = [];
         this._waitCount = 0;
@@ -230,7 +254,6 @@
         this.contents.fontSize = logFontSize;
     };
 
-    // 关键：只要不是空闲状态，就是“正在占用屏幕”
     Window_RainbowLog.prototype.isBlocking = function() {
         return this._state !== 'idle';
     };
@@ -241,7 +264,7 @@
         this.refresh();
         this.show();
         this.open();
-        this.opacity = 0; // 初始透明，走淡入
+        this.opacity = 0; 
         this.contentsOpacity = 0;
         this._state = 'opening';
     };
@@ -298,54 +321,88 @@
         }
     };
 
-    // ========================================================================
-    // 4. [流程阻断器] v3.3 核心修复
-    // ========================================================================
+    // 4. [流程阻断与输入冷冻] v3.5 核心修复
+    // -------------------------------------------------------------------------
     
-    // 1. 劫持 isBusy，确保系统知道我们在忙
+    // 辅助函数：判断是否正在阻塞
+    Scene_Battle.prototype.isRainbowBlocking = function() {
+        return this._rainbowLogWindow && this._rainbowLogWindow.isBlocking();
+    };
+
     const _BattleManager_isBusy = BattleManager.isBusy;
     BattleManager.isBusy = function() {
         if (_BattleManager_isBusy.call(this)) return true;
-        
         const scene = SceneManager._scene;
-        if (scene instanceof Scene_Battle && scene._rainbowLogWindow) {
-            if (scene._rainbowLogWindow.isBlocking()) {
-                return true; 
-            }
+        if (scene instanceof Scene_Battle && scene.isRainbowBlocking()) {
+            return true; 
         }
         return false;
     };
 
-    // 2. 【绝对暂停】
-    // 在 MZ 中，updateBattleProcess 负责驱动战斗管理器的所有决策（包括弹出窗口）。
-    // 如果我们在这里拦截，整个战斗逻辑（时间条、回合判断）都会暂停。
-    // 但是，窗口的动画 update 是分开的，所以日志可以继续播放，直到它自己消失。
-    
+    const _Window_BattleLog_isBusy = Window_BattleLog.prototype.isBusy;
+    Window_BattleLog.prototype.isBusy = function() {
+        if (_Window_BattleLog_isBusy.call(this)) return true;
+        const scene = SceneManager._scene;
+        if (scene instanceof Scene_Battle && scene.isRainbowBlocking()) {
+            return true;
+        }
+        return false;
+    };
+
     const _Scene_Battle_updateBattleProcess = Scene_Battle.prototype.updateBattleProcess;
     Scene_Battle.prototype.updateBattleProcess = function() {
-        if (this._rainbowLogWindow && this._rainbowLogWindow.isBlocking()) {
-            // 当日志正在显示时，直接 RETURN。
-            // 这样 BattleManager 就不会运行，也就绝对不会触发“指令窗口弹出”的指令。
-            // 也就彻底根除了“闪现”和“重叠”的可能性。
+        if (this.isRainbowBlocking()) {
             return; 
         }
         _Scene_Battle_updateBattleProcess.call(this);
     };
 
-    // 3. 辅助保险：依然劫持可见性更新，以防万一
-    const _Scene_Battle_updateInputWindowVisibility = Scene_Battle.prototype.updateInputWindowVisibility;
-    Scene_Battle.prototype.updateInputWindowVisibility = function() {
-        if (this._rainbowLogWindow && this._rainbowLogWindow.isBlocking()) {
-            this.hideSubInputWindows();
-            return; 
+    // [v3.5 核心修复：输入冷冻]
+    // 拦截 Window_Command (包括 PartyCommand 和 ActorCommand) 的输入处理
+    // 当日志阻塞时，任何按键（OK/Cancel等）都会被直接忽略。
+    const _Window_Command_processHandling = Window_Command.prototype.processHandling;
+    Window_Command.prototype.processHandling = function() {
+        const scene = SceneManager._scene;
+        if (scene instanceof Scene_Battle && scene.isRainbowBlocking()) {
+            return; // 强制停止输入处理，狂按回车无效
         }
-        _Scene_Battle_updateInputWindowVisibility.call(this);
+        _Window_Command_processHandling.call(this);
     };
 
-    // ========================================================================
+    // [v3.5 核心修复：视觉看门狗]
+    const _Scene_Battle_updateInputWindowVisibility = Scene_Battle.prototype.updateInputWindowVisibility;
+    Scene_Battle.prototype.updateInputWindowVisibility = function() {
+        // 1. 如果正在阻塞，强制隐藏
+        if (this.isRainbowBlocking()) {
+            this.hideSubInputWindows();
+            if (this._partyCommandWindow) this._partyCommandWindow.visible = false;
+            if (this._actorCommandWindow) this._actorCommandWindow.visible = false;
+            return; 
+        }
+
+        // 2. 如果没有阻塞，调用原版逻辑
+        _Scene_Battle_updateInputWindowVisibility.call(this);
+
+        // 3. [看门狗逻辑] 防止窗口在狂按回车后“弄丢”
+        // 如果系统认为当前是 Inputting 状态，但指令窗口却是不可见的，强制拉回来
+        if (BattleManager.isInputting()) {
+            if (BattleManager.actor()) {
+                // 如果轮到角色行动
+                if (this._actorCommandWindow && !this._actorCommandWindow.visible) {
+                    this._actorCommandWindow.show();
+                    this._actorCommandWindow.activate();
+                }
+            } else {
+                // 如果是队伍指令（战斗/逃跑）
+                if (this._partyCommandWindow && !this._partyCommandWindow.visible) {
+                    this._partyCommandWindow.show();
+                    this._partyCommandWindow.activate();
+                }
+            }
+        }
+    };
+
     // 5. 场景挂载与原版日志阉割
-    // ========================================================================
-    
     const _Scene_Battle_createAllWindows = Scene_Battle.prototype.createAllWindows;
     Scene_Battle.prototype.createAllWindows = function() {
         _Scene_Battle_createAllWindows.call(this);
@@ -409,10 +466,7 @@
         _Window_BattleLog_displayMpDamage.call(this, target);
     };
 
-    // ========================================================================
     // 6. 敌人状态图标
-    // ========================================================================
-
     const _Sprite_StateIcon_initMembers = Sprite_StateIcon.prototype.initMembers;
     Sprite_StateIcon.prototype.initMembers = function() {
         _Sprite_StateIcon_initMembers.call(this);
@@ -468,4 +522,189 @@
         this.anchor.y = 0.5;
     };
 
+
+    // ========================================================================
+    // ----------------------- MODULE 2: BATTLE UI (Rects) --------------------
+    // ========================================================================
+
+    // 这是脸图战斗窗口
+    Scene_Battle.prototype.statusWindowRect = function() {
+        const extra = -1;
+        const ww = 480;
+        const wh = 200 + extra;
+        const wx = 0;
+        const wy = 0;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    Window_BattleStatus.prototype.drawFace = function(faceName, faceIndex, x, y, width, height) {
+        width = width || ImageManager.faceWidth;
+        height = height || ImageManager.faceHeight;
+        
+        // 获取头像位图
+        const bitmap = ImageManager.loadFace(faceName);
+        
+        // 计算头像在整幅图中的位置
+        const pw = ImageManager.faceWidth;
+        const ph = ImageManager.faceHeight;
+        const sw = pw;
+        const sh = ph;
+        const dx = x;
+        const dy = y;
+        
+        // 设置可用绘制区域
+        const availableWidth = width || 120;
+        const availableHeight = height || 120;
+        
+        // 计算等比例缩放因子
+        const scaleX = availableWidth / pw;
+        const scaleY = availableHeight / ph;
+        const scale = Math.min(scaleX, scaleY, 1);
+        
+        // 计算缩放后的尺寸
+        const dw = pw * scale;
+        const dh = ph * scale;
+        
+        // 计算源图区域（处理faceIndex，支持一张图多个头像）
+        const sx = (faceIndex % 4) * pw;
+        const sy = Math.floor(faceIndex / 4) * ph;
+        
+        // 使用正确的方法绘制
+        this.contents.blt(bitmap, sx, sy, sw, sh, dx, dy, dw, dh);
+    };
+
+    // 战斗选择界面位置的数据
+    Scene_Message.prototype.messageWindowRect = function() {
+        const ww = Graphics.boxWidth;
+        const wh = this.calcWindowHeight(4, false) + 8;
+        const wx = (Graphics.boxWidth - ww) / 2;
+        const wy = 0;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 攻击战斗指令的选择窗口位置
+    Scene_Battle.prototype.partyCommandWindowRect = function() {
+        const ww = 130;//192是默认值
+        const wh = 200;
+        const wx = 0;
+        const wy = Graphics.boxHeight - wh;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 战斗指令选择窗口的位置
+    Scene_Battle.prototype.actorCommandWindowRect = function() {
+        const ww = 130;//192是默认值
+        const wh = 200;
+        const wx = 0;// 固定在左侧x=0的位置，去掉原有的条件判断
+        const wy = 70;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 敌人选择窗口
+    Scene_Battle.prototype.enemyWindowRect = function() {
+        const wx = 190;
+        const ww = this._statusWindow.width;
+        const wh = this.windowAreaHeight();
+        const wy = Graphics.boxHeight - wh;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 战斗日志窗口 (此部分被Module 1重写，保留结构兼容)
+    Scene_Battle.prototype.logWindowRect = function() {
+        const wx = 0;
+        const wy = 500;
+        const ww = Graphics.boxWidth;
+        const wh = this.calcWindowHeight(10, false);
+        return new Rectangle(wx, wy, ww, wh);
+    }
+
+    // 战斗中返回按钮的位置
+    Scene_Battle.prototype.createCancelButton = function() {
+        this._cancelButton = new Sprite_Button("cancel");
+        this._cancelButton.x = 10000;
+        this._cancelButton.y = this.buttonY();
+        this.addWindow(this._cancelButton);
+    };
+
+    Scene_Battle.prototype.helpWindowRect = function() {
+        const wx = 0;
+        const wy = -5;
+        const ww = Graphics.boxWidth;
+        const wh = this.helpAreaHeight();
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+
+    // ========================================================================
+    // ------------------- MODULE 3: STATUS WINDOW FIXED ----------------------
+    // ========================================================================
+    
+    // 参数解析 - 状态栏固定
+    const parseParamSafe = (val, defaultVal) => {
+        if (val === undefined || val === "") return defaultVal;
+        const num = Number(val);
+        return isNaN(num) ? defaultVal : num;
+    };
+
+    const fixedX = parseParamSafe(parameters['fixedX'], 0);
+    const fixedY = parseParamSafe(parameters['fixedY'], 0); 
+    const fixedWidth = parameters['fixedWidth'] ? parseInt(parameters['fixedWidth']) : null;
+    const fixedHeight = parameters['fixedHeight'] ? parseInt(parameters['fixedHeight']) : null;
+
+    // 1. 固定状态窗口的位置和尺寸 (使用别名捕获 Module 2 定义的方法)
+    const _Scene_Battle_statusWindowRect = Scene_Battle.prototype.statusWindowRect;
+    Scene_Battle.prototype.statusWindowRect = function() {
+        const originalRect = _Scene_Battle_statusWindowRect.call(this);
+        const ww = fixedWidth || originalRect.width;
+        const wh = fixedHeight || originalRect.height;
+        return new Rectangle(fixedX, fixedY, ww, wh);
+    };
+
+    // 2. 创建窗口后强制设置位置
+    const _Scene_Battle_createStatusWindow = Scene_Battle.prototype.createStatusWindow;
+    Scene_Battle.prototype.createStatusWindow = function() {
+        _Scene_Battle_createStatusWindow.call(this);
+        if (this._statusWindow) {
+            this._statusWindow.x = fixedX;
+            this._statusWindow.y = fixedY;
+            this._statusWindow._isFixedPosition = true;
+        }
+    };
+
+    // 3. 重写窗口的移动方法
+    const _Window_Base_setX = Window_Base.prototype.setX;
+    Window_Base.prototype.setX = function(x) {
+        if (!this._isFixedPosition) {
+            _Window_Base_setX.call(this, x);
+        }
+    };
+
+    const _Window_Base_setY = Window_Base.prototype.setY;
+    Window_Base.prototype.setY = function(y) {
+        if (!this._isFixedPosition) {
+            _Window_Base_setY.call(this, y);
+        }
+    };
+
+    // 4. 确保攻击指令选择时窗口保持可见和位置不变
+    const _Scene_Battle_commandAttack = Scene_Battle.prototype.commandAttack;
+    Scene_Battle.prototype.commandAttack = function() {
+        _Scene_Battle_commandAttack.call(this);
+        if (this._statusWindow) {
+            this._statusWindow.visible = true;
+            this._statusWindow.x = fixedX;
+            this._statusWindow.y = fixedY;
+        }
+    };
+
+    // 5. 移除所有可能的位置更新逻辑
+    const _Scene_Battle_update = Scene_Battle.prototype.update;
+    Scene_Battle.prototype.update = function() {
+        _Scene_Battle_update.call(this);
+        if (this._statusWindow) {
+            if (this._statusWindow.x !== fixedX) this._statusWindow.x = fixedX;
+            if (this._statusWindow.y !== fixedY) this._statusWindow.y = fixedY;
+        }
+    };
+    
 })();
