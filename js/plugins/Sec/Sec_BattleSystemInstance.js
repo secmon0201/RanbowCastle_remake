@@ -2,7 +2,7 @@
  * @target MZ
  * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
  * @author Secmon (Refactored by Gemini)
- * @version 3.7.2
+ * @version 3.12
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -81,43 +81,75 @@
  * @desc 每次弹跳减少的间隔时间（越弹越快）。
  * @type number
  * @default 30
+ * * @param ---Visual Popups---
+ * @text [协战/识破表现]
+ * @default
+ * * @param SynergyText
+ * @parent ---Visual Popups---
+ * @text 队友协战-文字
+ * @desc 队友触发协战时弹出的文字。
+ * @type string
+ * @default 协战
+ * * @param SynergyColor
+ * @parent ---Visual Popups---
+ * @text 队友协战-颜色
+ * @desc 队友协战文字及闪烁的颜色 (CSS格式，如 #FFD700)。
+ * @type string
+ * @default #FFD700
+ * * @param ReactionText
+ * @parent ---Visual Popups---
+ * @text 敌方识破-文字
+ * @desc 敌人触发识破/反击时弹出的文字。
+ * @type string
+ * @default 识破
+ * * @param ReactionColor
+ * @parent ---Visual Popups---
+ * @text 敌方识破-颜色
+ * @desc 敌方识破文字及闪烁的颜色 (CSS格式，如 #FF0000)。
+ * @type string
+ * @default #FF0000
+ * * @param PopupFontSize
+ * @parent ---Visual Popups---
+ * @text 弹出文字字号
+ * @desc 协战/识破文字的大小。
+ * @type number
+ * @default 20
+ * * @param PopupWaitFrames
+ * @parent ---Visual Popups---
+ * @text 弹出前摇等待(帧)
+ * @desc 文字弹出及闪烁持续的时间，结束后才开始播放技能。
+ * @type number
+ * @default 30
+ * * @param ---Audio Effects---
+ * @text [协战/识破音效]
+ * @default
+ * * @param SynergySE
+ * @parent ---Audio Effects---
+ * @text 触发音效文件名
+ * @desc 协战或识破触发时播放的SE文件名(不带后缀)。留空则不播放。
+ * @type file
+ * @dir audio/se/
+ * @default Skill2
+ * * @param SynergyVolume
+ * @parent ---Audio Effects---
+ * @text 音效音量
+ * @desc 0-100
+ * @type number
+ * @default 90
+ * * @param SynergyPitch
+ * @parent ---Audio Effects---
+ * @text 音效音调
+ * @desc 50-150
+ * @type number
+ * @default 100
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v3.7.2 (核心修正版) ★
+ * ★ 插件功能手册 v3.12 (稳定性修复版) ★
  * ============================================================================
- * 【关键修复】
- * v3.7.2: 
- * 1. [Fix] 修复了队友协战/敌方识破完全不触发的严重 Bug。
- * 原因：原版 endAction 会清空 subject，导致插件无法获取行动源头。
- * 现已修正为在清空前捕获引用。
- * 2. [Check] 再次确认了多重协战队列逻辑，确保多个队友可以依次响应。
- *
- * 【重要提示】
- * 关于 <队友协战: Skill, ...>
- * - "Skill" 类型仅在施放【技能】时触发。
- * - 【普通攻击】在代码逻辑中属于 Attack，不属于 Skill。
- * - 如果希望普攻也触发，请把类型写为 Attack，或者 Any。
- *
- * ============================================================================
- * 一、标签写法速查
- * ----------------------------------------------------------------------------
- * 1. 队友协战 (支持写多行，依次触发)
- * <队友协战: Attack, 100, 301>
- * <队友协战: Skill, 100, 315>
- *
- * 2. 敌方识破
- * <敌方识破: Support, 100, 80>
- *
- * 3. 推拉条
- * <推条: 10, 66>
- * <拉条: 10, 66>
- *
- * 4. 守护光环 (动画播在队友身上)
- * <守护光环: 60, 0.8, damage, 52>
- *
- * 5. 蓄力释放 (动画播在敌人身上)
- * <蓄力释放: 50, d*2, 1>
+ * 【更新日志 v3.12】
+ * 1. [Fix] 修复了协战文字弹出时的报错 (Cannot read property 'removeChild' of null)。
+ * 移除了不安全的自我销毁逻辑，将生命周期管理完全交还给 RMMZ 核心或 MOG 插件。
  *
  * ============================================================================
  */
@@ -138,7 +170,20 @@
         stateInteractDelay: Number(parameters['StateInteractDelay'] || 200),
         fieldDelay: Number(parameters['FieldResonanceDelay'] || 200),
         ricochetBase: Number(parameters['RicochetBaseDelay'] || 200),
-        ricochetDecay: Number(parameters['RicochetDecay'] || 30)
+        ricochetDecay: Number(parameters['RicochetDecay'] || 30),
+        
+        // 视觉参数
+        synergyText: String(parameters['SynergyText'] || "协战"),
+        synergyColor: String(parameters['SynergyColor'] || "#FFD700"), 
+        reactionText: String(parameters['ReactionText'] || "识破"),
+        reactionColor: String(parameters['ReactionColor'] || "#FF0000"), 
+        popupFontSize: Number(parameters['PopupFontSize'] || 20),
+        popupWait: Number(parameters['PopupWaitFrames'] || 30),
+
+        // 音效参数
+        seName: String(parameters['SynergySE'] || ""),
+        seVol: Number(parameters['SynergyVolume'] || 90),
+        sePitch: Number(parameters['SynergyPitch'] || 100)
     };
 
     const DEF_ANIM = {
@@ -184,6 +229,25 @@
             if ($gameTemp && $gameTemp.requestAnimation) {
                 $gameTemp.requestAnimation([target], animId);
             }
+        }
+    }
+
+    function _Sec_HexToRgb(hex) {
+        if (!hex) return [255, 255, 255];
+        hex = hex.replace(/^#/, '');
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const num = parseInt(hex, 16);
+        return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+    }
+
+    function _Sec_PlaySynergySE() {
+        if (Sec_Params.seName) {
+            AudioManager.playSe({
+                name: Sec_Params.seName,
+                volume: Sec_Params.seVol,
+                pitch: Sec_Params.sePitch,
+                pan: 0
+            });
         }
     }
 
@@ -728,7 +792,7 @@
         const reaction = this._secReactionQueue.shift();
         const observer = reaction.observer;
         
-        console.log(`[Sec] 执行队列反应: ${observer.name()} -> 技能 ${reaction.skillId}`);
+        console.log(`[Sec] 执行队列反应: ${observer.name()} -> 技能 ${reaction.skillId} (${reaction.type})`);
 
         // 【同步执行】不再使用 setTimeout，直接插入行动
         if (observer.isAlive() && observer.canMove()) {
@@ -740,6 +804,7 @@
                 // forceAction 会 push 到末尾
                 const reactAction = actions[actions.length - 1]; 
                 reactAction._isSecReaction = true;
+                reactAction._secReactionType = reaction.type; // 传递反应类型
             }
 
             this.forceAction(observer);
@@ -832,11 +897,9 @@
                 this._secReactionQueue.push({
                     observer: observer,
                     skillId: skillId,
-                    targetIndex: targetIndex
+                    targetIndex: targetIndex,
+                    type: 'synergy' // 标记类型
                 });
-                
-                // 移除 return，允许同一角色多个技能同时触发
-                // return; 
             }
         }
     };
@@ -867,11 +930,186 @@
                 this._secReactionQueue.push({
                     observer: observer,
                     skillId: skillId,
-                    targetIndex: targetIndex
+                    targetIndex: targetIndex,
+                    type: 'reaction' // 标记类型
                 });
-                // return; // 同样允许连环识破
             }
         }
+    };
+
+    // ======================================================================
+    // 5. 【视觉特效扩展】协战/识破 弹出文字 & 闪烁
+    // ======================================================================
+
+    // 5.1 Game_Battler: 请求弹出文字 & 闪烁
+    // 增加参数: color, fontSize
+    Game_Battler.prototype.startCustomPopup = function(text, color, fontSize, duration) {
+        this._customPopupText = text;
+        this._customPopupColor = color;
+        this._customPopupFontSize = fontSize;
+        this._customPopupDuration = duration; // 传递前摇时长
+        this.startDamagePopup();
+    };
+
+    // 请求闪烁
+    Game_Battler.prototype.requestSecFlash = function(color, duration) {
+        this._secFlashData = { color: color, duration: duration };
+    };
+    Game_Battler.prototype.isSecFlashRequested = function() {
+        return !!this._secFlashData;
+    };
+    Game_Battler.prototype.secFlashData = function() {
+        return this._secFlashData;
+    };
+    Game_Battler.prototype.clearSecFlash = function() {
+        this._secFlashData = null;
+    };
+
+    // 5.2 Sprite_Damage: 拦截并显示自定义文字
+    const _Sprite_Damage_setup = Sprite_Damage.prototype.setup;
+    Sprite_Damage.prototype.setup = function(target) {
+        if (target._customPopupText) {
+            this.createCustomText(target._customPopupText, target._customPopupColor, target._customPopupFontSize, target._customPopupDuration);
+            target._customPopupText = null; 
+            target._customPopupColor = null;
+            target._customPopupFontSize = null;
+            target._customPopupDuration = null;
+            target.clearDamagePopup();
+        } else {
+            _Sprite_Damage_setup.call(this, target);
+        }
+    };
+
+    // 【核心重写】创建自定义文字并应用缩放动画
+    Sprite_Damage.prototype.createCustomText = function(text, color, fontSize, duration) {
+        // 重写 update 逻辑，接管该 sprite 的生命周期
+        const popupDuration = duration || 30; // 前摇
+        const holdDuration = 10;              // 停留
+        const fadeDuration = 20;              // 消失
+        
+        this._duration = popupDuration + holdDuration + fadeDuration;
+        this._popupPhaseDur = popupDuration;
+        this._holdPhaseDur = holdDuration;
+        
+        const h = fontSize || this.fontSize(); 
+        const w = Math.floor(h * text.length * 1.5); 
+        const sprite = this.createChildSprite(w, h);
+        
+        // 初始化状态：半大小
+        sprite.anchor.x = 0.5;
+        sprite.anchor.y = 1;
+        sprite.scale.x = 0.5; 
+        sprite.scale.y = 0.5; 
+        
+        // 应用颜色和大小
+        sprite.bitmap.fontSize = h;
+        if (color) sprite.bitmap.textColor = color;
+        
+        sprite.bitmap.drawText(text, 0, 0, w, h, "center");
+        sprite.dy = 0; // 不使用原版的物理弹跳
+        
+        // 绑定更新函数到子 sprite 上（或者覆盖主 update）
+        // 这里我们选择覆盖主 update，因为我们不仅要更新位置，还要更新缩放
+        this.update = this.updateCustomPopup.bind(this, sprite);
+    };
+
+    Sprite_Damage.prototype.updateCustomPopup = function(childSprite) {
+        // 计算当前生命周期进度
+        const totalDuration = this._popupPhaseDur + this._holdPhaseDur + 20;
+        const elapsed = totalDuration - this._duration;
+        
+        if (elapsed < this._popupPhaseDur) {
+            // 阶段1: 放大 (0.5 -> 1.3)
+            // 使用缓动函数让放大更有力
+            const t = elapsed / this._popupPhaseDur;
+            const ease = 1 - Math.pow(1 - t, 3); // Cubic ease out
+            const scale = 0.5 + (0.8 * ease);
+            childSprite.scale.x = scale;
+            childSprite.scale.y = scale;
+            this.opacity = 255;
+        } else if (elapsed < this._popupPhaseDur + this._holdPhaseDur) {
+            // 阶段2: 保持 (1.3)
+            childSprite.scale.x = 1.3;
+            childSprite.scale.y = 1.3;
+            this.opacity = 255;
+        } else {
+            // 阶段3: 消失
+            childSprite.scale.x = 1.3;
+            childSprite.scale.y = 1.3;
+            this.opacity -= 255 / 20;
+        }
+
+        // 稍微向上漂浮一点点，增加动感
+        childSprite.y -= 0.2;
+
+        this._duration--;
+        // 【Fix v3.12】删除自我销毁代码，交给 Sprite_Battler.updateDamagePopup
+        // RMMZ 底层逻辑会自动清理 !isPlaying() (即 duration <= 0) 的 sprite
+    };
+
+    // 5.3 Sprite_Battler: 角色闪烁逻辑 (动态时长)
+    const _Sprite_Battler_update = Sprite_Battler.prototype.update;
+    Sprite_Battler.prototype.update = function() {
+        _Sprite_Battler_update.call(this);
+        if (this._battler) this.updateSecVisualFlash();
+    };
+
+    Sprite_Battler.prototype.updateSecVisualFlash = function() {
+        if (this._battler.isSecFlashRequested()) {
+            const data = this._battler.secFlashData();
+            this._secFlashDuration = data.duration;
+            this._secFlashMaxDuration = data.duration;
+            this._secFlashColor = data.color || [255, 255, 255];
+            this._battler.clearSecFlash();
+        }
+
+        if (this._secFlashDuration > 0) {
+            const d = this._secFlashDuration--;
+            // 计算 alpha，保持高亮
+            const alpha = Math.floor((d / this._secFlashMaxDuration) * 200); 
+            this.setBlendColor([...this._secFlashColor, alpha]);
+        }
+    };
+
+    // 5.4 Window_BattleLog: 在协战行动开始前插入视觉步骤
+    const _Window_BattleLog_startAction = Window_BattleLog.prototype.startAction;
+    Window_BattleLog.prototype.startAction = function(subject, action, targets) {
+        if (action._isSecReaction) {
+            // 插入自定义指令：弹出文字，并传递类型
+            this.push('performSynergyPopup', subject, action._secReactionType); 
+            // 插入等待：让玩家看清文字 (此等待时长应与动画时长参数一致)
+            this.push('waitForSecPopup'); 
+        }
+        _Window_BattleLog_startAction.call(this, subject, action, targets);
+    };
+
+    // 新增等待方法
+    Window_BattleLog.prototype.waitForSecPopup = function() {
+        // 这里多加 10 帧是为了配合文字停留的 Hold 阶段，确保文字开始消失时技能正好发动
+        this._waitCount = Sec_Params.popupWait + 10;
+    };
+
+    // 5.5 Window_BattleLog: 实现弹出方法 + 触发闪烁 + 播放音效
+    Window_BattleLog.prototype.performSynergyPopup = function(subject, reactionType) {
+        let text = Sec_Params.synergyText;
+        let color = Sec_Params.synergyColor;
+        const fontSize = Sec_Params.popupFontSize;
+        const duration = Sec_Params.popupWait; // 前摇时长
+
+        if (reactionType === 'reaction') {
+            text = Sec_Params.reactionText;
+            color = Sec_Params.reactionColor;
+        }
+
+        // 0. 播放音效
+        _Sec_PlaySynergySE();
+
+        // 1. 弹出文字 (传递时长)
+        subject.startCustomPopup(text, color, fontSize, duration); 
+        
+        // 2. 触发全身闪烁 (传递时长)
+        const rgb = _Sec_HexToRgb(color);
+        subject.requestSecFlash(rgb, duration); 
     };
 
 })();

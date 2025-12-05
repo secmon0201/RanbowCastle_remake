@@ -7,31 +7,16 @@
  *
  * @help
  * ============================================================================
- * Sec_BattleTimeline.js
+ * Sec_BattleTimeline.js (v3.4 颜色区分版)
  * ============================================================================
- * 本插件为 TPB (即时制/半即时制) 战斗模式提供一个可视化的行动顺序时间轴。
- *
- * 【核心功能】
- * 1. 实时预测：基于速度(AGI)和充能进度，实时演算未来回合顺序。
- * 2. 丝滑动画：图标移动、缩放、进场、退场均有平滑的插值动画。
- * 3. 死亡反馈：角色死亡时图标原位闪烁 -> 留空 -> 后方补位。
- * 4. 时间膨胀：通过分辨率参数放大时间数值，避免数值重复。
- * 5. [v3.0] 推拉预览：选择推条/拉条技能时，时间轴会实时演示图标位置变化。
+ * * 【更新日志 v3.4】
+ * - 视觉优化：区分了推条和拉条的箭头颜色。
+ * > 拉条（向左移动，提前行动）：使用黄色 (#FFCA5F)
+ * > 推条（向右移动，延后行动）：使用绿色 (#00FF00)
  *
  * ============================================================================
- * 更新日志
- * ============================================================================
- * v3.0:
- * - 新增：推拉条机制的底层支持与实时预览功能。
- * - 开放：BattleManager.applyTpbTickShift 供技能系统调用。
- * v2.9:
- * - 新增：[时间数字大小] 参数。
- * v2.8:
- * - 新增 [时间分辨率] 参数。
- *
- * ============================================================================
- *
- * @param ---Settings---
+ * (其余参数保持不变)
+ * * @param ---Settings---
  * @text === 基础设置 ===
  * @default
  *
@@ -125,12 +110,25 @@
  * @type number
  * @decimals 2
  * @default 0.80
- * * @param TimeFontSize
+ *
+ * @param TimeFontSize
  * @text 时间数字大小
  * @parent ---Appearance---
  * @desc 图标右下角剩余时间数字的字号。
  * @type number
  * @default 12
+ * * @param PullArrowColor
+ * @text 拉条箭头颜色
+ * @parent ---Appearance---
+ * @desc 目标向左移动（行动提前）时的箭头颜色。
+ * @type string
+ * @default #FFCA5F
+ * * @param PushArrowColor
+ * @text 推条箭头颜色
+ * @parent ---Appearance---
+ * @desc 目标向右移动（行动延后）时的箭头颜色。
+ * @type string
+ * @default #00FF00
  */
 
 (() => {
@@ -144,7 +142,7 @@
         y: Number(parameters['TimelineY'] === undefined ? 210 : parameters['TimelineY']),
         width: Number(parameters['TimelineWidth'] || 0),
         firstSize: Number(parameters['FirstIconSize'] || 36),
-        stdSize: Number(parameters['IconSize'] || 24),
+        stdSize: Number(parameters['IconSize'] || 30),
         spacing: Number(parameters['IconSpacing'] || 0),
         sinkY: Number(parameters['SelectionSinkY'] || 8),
         maxPred: Number(parameters['MaxPrediction'] || 17),
@@ -153,6 +151,8 @@
         borderColor: parameters['BoxBorderColor'] || "#490C23",
         enemyScale: Number(parameters['EnemyScale'] || 0.8),
         timeFontSize: Number(parameters['TimeFontSize'] || 12),
+        pullColor: parameters['PullArrowColor'] || "#FFCA5F", // 拉条颜色
+        pushColor: parameters['PushArrowColor'] || "#00FF00", // 推条颜色
         animSpeed: 0.15 
     };
 
@@ -176,35 +176,26 @@
     };
 
     // ========================================================================
-    //  BattleManager 扩展：预测引擎 (核心修改)
+    //  BattleManager 扩展：预测引擎
     // ========================================================================
     
     BattleManager._predictedTimeline = [];
 
-    // [v3.0] 开放参数供外部使用
     BattleManager.getTpbResolution = function() {
         return Conf.timeRes;
     };
 
-    // [v3.0] 实际执行推拉条 (改变 TPB Charge)
-    // ticks > 0: 推条(Delay), ticks < 0: 拉条(Advance)
     BattleManager.applyTpbTickShift = function(target, ticks) {
         if (!target) return;
         const speed = target.tpbSpeed();
         if (speed === 0) return;
         const refTime = this.isActiveTpb() ? 240 : 60;
         const acceleration = speed / refTime;
-        
-        // 公式：deltaCharge = -deltaTicks * acc / res
-        // 增加 Tick (推条) = 减少 Charge
-        // 减少 Tick (拉条) = 增加 Charge
         const deltaCharge = -(ticks * acceleration / Conf.timeRes);
         target._tpbChargeTime = Math.max(0, Math.min(1, target._tpbChargeTime + deltaCharge));
     };
 
-    // [v3.0] 获取当前预览的推拉值
     BattleManager.getPreviewTpbShift = function(battler) {
-        // 必须处于输入阶段
         if (!this.isInputting()) return 0;
         const action = this.inputtingAction();
         if (!action || !action.item()) return 0;
@@ -212,23 +203,19 @@
         const note = action.item().note;
         let shift = 0;
 
-        // 解析推条 (Delay) -> 增加 ticks
         const pushMatch = note.match(/<推条[:：]\s*(\d+)/);
         if (pushMatch) shift += parseInt(pushMatch[1]);
 
-        // 解析拉条 (Advance) -> 减少 ticks
         const pullMatch = note.match(/<拉条[:：]\s*(\d+)/);
         if (pullMatch) shift -= parseInt(pullMatch[1]);
 
         if (shift === 0) return 0;
 
-        // 判断 battler 是否被选中
         const scene = SceneManager._scene;
         if (!(scene instanceof Scene_Battle)) return 0;
 
         let isSelected = false;
         
-        // 检查敌人窗口
         if (scene._enemyWindow && scene._enemyWindow.active) {
             if (action.isForAll()) {
                 if (battler.isEnemy()) isSelected = true;
@@ -236,7 +223,6 @@
                 if (scene._enemyWindow.enemy() === battler) isSelected = true;
             }
         }
-        // 检查队友窗口
         else if (scene._actorWindow && scene._actorWindow.active) {
             if (action.isForAll()) {
                 if (battler.isActor()) isSelected = true;
@@ -283,24 +269,42 @@
 
         const allBattlers = this.allBattleMembers().filter(b => b.isAlive() && b.isAppeared());
         
-        let simState = allBattlers.map(b => {
-            // [v3.0] 在基础时间上叠加预览偏移量
+        // 1. 初始化模拟状态池
+        let simState = [];
+        
+        allBattlers.forEach(b => {
             const baseTicks = this.tpbTicksToReady(b);
-            const previewShift = this.getPreviewTpbShift(b);
-            // 确保不会变成负数（实际上拉条拉过头就是0，即立即行动）
-            const finalTicks = Math.max(0, baseTicks + previewShift);
+            const shift = this.getPreviewTpbShift(b);
+            const fullCycle = this.tpbTicksFullCycle(b);
 
-            return {
+            // 无论是否有变动，都推入一个“当前现实/预览后”的状态
+            // 如果有 shift，这个就是移动后的位置
+            simState.push({
                 battler: b,
-                ticksNeeded: finalTicks,
-                fullCycle: this.tpbTicksFullCycle(b)
-            };
+                ticksNeeded: Math.max(0, baseTicks + shift),
+                fullCycle: fullCycle,
+                type: (shift !== 0) ? 'preview' : 'normal'
+            });
+
+            // 如果有变动，额外推入一个“原始位置”的状态（幽灵）
+            // 注意：ghost 不应该产生后续的回合循环 (fullCycle设为极大)
+            if (shift !== 0) {
+                simState.push({
+                    battler: b,
+                    ticksNeeded: Math.max(0, baseTicks),
+                    fullCycle: 9999999, // 原点位置仅显示一次，不参与后续迭代
+                    type: 'origin'
+                });
+            }
         });
 
         const prediction = [];
         let predictionCount = 0;
         let simTimeAccumulator = 0;
 
+        // 2. 处理已就绪的角色 (Ticks <= 0)
+        // 注意：shift可能导致原本就绪的角色不再就绪，或者原本不就绪的变得就绪
+        // 这里的逻辑需要根据 shift 后的 ticksNeeded 来判断
         const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.1);
         readyBattlers.sort((a, b) => {
             if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.1) {
@@ -311,31 +315,51 @@
 
         readyBattlers.forEach(s => {
             if (predictionCount < Conf.maxPred) {
-                prediction.push({ battler: s.battler, isReady: true, ticks: 0 });
+                prediction.push({ 
+                    battler: s.battler, 
+                    isReady: true, 
+                    ticks: 0,
+                    type: s.type 
+                });
                 predictionCount++;
-                s.ticksNeeded += s.fullCycle;
+                s.ticksNeeded += s.fullCycle; // 只有非 ghost 会正常加循环
             }
         });
 
+        // 3. 模拟未来时间
         while (predictionCount < Conf.maxPred) {
-            simState.sort((a, b) => a.ticksNeeded - b.ticksNeeded);
-            const winner = simState[0];
-            
-            if (!winner) break; 
+            // 每次找出所需时间最短的
+            // 过滤掉那些 ticksNeeded 已经很大的（比如 ghost 处理完一次后）
+            const validSims = simState.filter(s => s.ticksNeeded < 9000000);
+            if (validSims.length === 0) break;
 
+            validSims.sort((a, b) => a.ticksNeeded - b.ticksNeeded);
+            const winner = validSims[0];
+            
             const elapsed = winner.ticksNeeded;
             simTimeAccumulator += elapsed;
 
-            simState.forEach(s => s.ticksNeeded -= elapsed);
+            // 所有人的等待时间减去流逝时间
+            simState.forEach(s => {
+                if (s.ticksNeeded < 9000000) {
+                    s.ticksNeeded -= elapsed;
+                }
+            });
 
             prediction.push({ 
                 battler: winner.battler, 
                 isReady: false, 
-                ticks: Math.round(simTimeAccumulator) 
+                ticks: Math.round(simTimeAccumulator),
+                type: winner.type
             });
             predictionCount++;
 
-            winner.ticksNeeded = winner.fullCycle;
+            // 只有非 Origin 的实体才会产生下一个行动回合
+            if (winner.type !== 'origin') {
+                winner.ticksNeeded = winner.fullCycle;
+            } else {
+                winner.ticksNeeded = 9999999; // 销毁 ghost
+            }
         }
 
         this._predictedTimeline = prediction;
@@ -366,11 +390,12 @@
             this.targetSize = size;
             this.targetOpacity = 255;
             
-            this.isGhost = false;
+            this.isGhost = false; // 是否是真正的“死亡/移除”幽灵
             this.ghostTimer = 0;
-            this.isReady = false;
+            this.isReady = false; 
             this.matched = false;
             this.ticks = 0;
+            this.previewType = 'normal'; // 'normal' | 'origin' | 'preview'
         }
 
         update() {
@@ -438,35 +463,70 @@
             const predList = BattleManager._predictedTimeline || [];
             const selections = this.getCurrentSelection();
 
+            // 1. 重置匹配状态
             this._visualItems.forEach(i => { if(!i.isGhost) i.matched = false; });
+
+            // 2. 将现有的 Visual Items 按角色分组
+            const itemsByBattler = new Map();
+            for (const item of this._visualItems) {
+                if (item.isGhost) continue;
+                if (!itemsByBattler.has(item.battler)) {
+                    itemsByBattler.set(item.battler, []);
+                }
+                itemsByBattler.get(item.battler).push(item);
+            }
+            // 按 X 坐标排序，确保取出的顺序是从左到右
+            itemsByBattler.forEach(list => list.sort((a, b) => a.x - b.x));
 
             const ghosts = this._visualItems.filter(i => i.isGhost);
             ghosts.sort((a, b) => a.x - b.x);
             
             const liveItems = [];
-            const findItem = (battler) => this._visualItems.find(it => it.battler === battler && !it.isGhost && !it.matched);
             
             let maxVisualX = 0;
             this._visualItems.forEach(i => maxVisualX = Math.max(maxVisualX, i.x));
             const spawnX = (maxVisualX > 0 ? maxVisualX : 0) + Conf.stdSize + Conf.spacing;
 
+            // 3. 匹配逻辑
             for (const pred of predList) {
-                let item = findItem(pred.battler);
+                const battlerItems = itemsByBattler.get(pred.battler);
+                let item = null;
+
+                if (battlerItems && battlerItems.length > 0) {
+                    const candidate = battlerItems[0];
+                    
+                    // 【队列轮转优化】
+                    const justActed = (candidate.isReady && !pred.isReady && pred.type === 'normal');
+                    
+                    if (battlerItems.length > 1 && justActed) {
+                        battlerItems.shift(); 
+                        battlerItems.push(candidate);
+                        item = battlerItems.shift();
+                    } else {
+                        item = battlerItems.shift();
+                    }
+                }
+
                 if (!item) {
                     item = new VisualItem(pred.battler, spawnX, 4, Conf.stdSize);
                     this._visualItems.push(item);
                 }
+
                 item.matched = true;
-                item.isReady = pred.isReady;
+                item.isReady = pred.isReady; 
                 item.ticks = pred.ticks; 
+                item.previewType = pred.type; // 记录类型：origin, preview, normal
                 liveItems.push(item);
             }
 
+            // 4. 计算目标坐标
             let currentX = 4;
             let slotIndex = 0;
             let liveIndex = 0;
             let ghostIndex = 0;
             
+            // 预测列表中包含了 Origin 和 Preview，它们都会占一个 slotIndex，
+            // 从而计算出不同的 X 坐标。
             while (liveIndex < liveItems.length || ghostIndex < ghosts.length) {
                 if (slotIndex >= Conf.maxPred + ghosts.length) break;
 
@@ -474,7 +534,6 @@
                 const slotSize = isFirst ? Conf.firstSize : Conf.stdSize;
                 
                 let takenByGhost = null;
-                
                 if (ghostIndex < ghosts.length) {
                     const ghost = ghosts[ghostIndex];
                     if (ghost.x < currentX + (slotSize / 2)) {
@@ -498,6 +557,7 @@
                 }
                 
                 const isSelected = selections.includes(item.battler);
+                // 无论是 Origin 还是 Preview，只要是选中的人，并且不是第一顺位（当前行动者），都下沉
                 const shouldSink = isSelected && !isFirst; 
                 
                 item.targetY = 4 + (shouldSink ? Conf.sinkY : 0);
@@ -505,7 +565,8 @@
                 if (item.isGhost) {
                     item.targetOpacity = (item.ghostTimer > 30) ? 255 : 0; 
                 } else {
-                    item.targetOpacity = 255;
+                    // 旧位置图标不消失。
+                    item.targetOpacity = 255; 
                 }
                 
                 currentX += slotSize + Conf.spacing;
@@ -513,9 +574,7 @@
             }
             
             this._visualItems.forEach(item => {
-                if (!item.isGhost && !item.matched) {
-                    item.targetOpacity = 0; 
-                }
+                if (!item.isGhost && !item.matched) item.targetOpacity = 0; 
             });
             
             for (let i = this._visualItems.length - 1; i >= 0; i--) {
@@ -535,6 +594,10 @@
             if (!this.contents) return;
             this.contents.clear();
             
+            // 先绘制箭头（在图标层之下）
+            this.drawArrows();
+
+            // 再绘制图标
             for (const item of this._visualItems) {
                 if (item.opacity <= 1) continue;
                 
@@ -543,6 +606,71 @@
 
                 this.drawTimelineItem(item, isFlashing, isFirstVisual);
             }
+        }
+
+        drawArrows() {
+            // 找到所有配对的 Origin 和 Preview
+            // 我们通过遍历 _visualItems，按 battler 分组查找
+            const groups = new Map();
+            this._visualItems.forEach(item => {
+                if (item.previewType === 'origin' || item.previewType === 'preview') {
+                    if (!groups.has(item.battler)) groups.set(item.battler, []);
+                    groups.get(item.battler).push(item);
+                }
+            });
+
+            const ctx = this.contents.context;
+            ctx.save();
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.8;
+
+            groups.forEach(items => {
+                const origin = items.find(i => i.previewType === 'origin');
+                const preview = items.find(i => i.previewType === 'preview');
+
+                if (origin && preview && Math.abs(origin.x - preview.x) > 10) {
+                    const startX = origin.x + origin.size / 2;
+                    const endX = preview.x + preview.size / 2;
+                    
+                    // 【颜色区分逻辑】
+                    // 如果 preview 在 origin 左边 (endX < startX) -> 拉条 (Pull)
+                    // 如果 preview 在 origin 右边 (endX > startX) -> 推条 (Push)
+                    const isPull = endX < startX;
+                    const color = isPull ? Conf.pullColor : Conf.pushColor;
+
+                    ctx.strokeStyle = color;
+                    ctx.fillStyle = color;
+
+                    // 【位置修正】将 Y 轴向下偏移 2/3 个图块高度，避免重叠
+                    const y = origin.y + origin.size / 2 + (origin.size * 2 / 3);
+
+                    // 绘制连线
+                    const padding = origin.size / 2 + 4; 
+                    const dir = endX > startX ? 1 : -1;
+                    
+                    const lineStart = startX + (dir * padding);
+                    const lineEnd = endX - (dir * padding);
+
+                    // 如果距离太近导致重叠，就不画了
+                    if ((dir === 1 && lineStart < lineEnd) || (dir === -1 && lineStart > lineEnd)) {
+                        ctx.beginPath();
+                        ctx.moveTo(lineStart, y);
+                        ctx.lineTo(lineEnd, y);
+                        ctx.stroke();
+
+                        // 绘制箭头头部
+                        const arrowSize = 6;
+                        ctx.beginPath();
+                        ctx.moveTo(lineEnd, y);
+                        ctx.lineTo(lineEnd - (dir * arrowSize), y - arrowSize);
+                        ctx.lineTo(lineEnd - (dir * arrowSize), y + arrowSize);
+                        ctx.fill();
+                    }
+                }
+            });
+
+            ctx.restore();
         }
 
         drawTimelineItem(item, isFlashing, isFirstVisual) {
@@ -568,15 +696,31 @@
                 this.drawEnemyIcon(item.battler, x, y, size);
             }
 
+            // 特殊状态覆盖层
             if (isFlashing) {
+                // 死亡/消失闪烁
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
                 const flashAlpha = 0.6 + Math.sin(Date.now() / 30) * 0.4;
                 ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
+            } else if (item.previewType === 'preview') {
+                // 预览图块的高亮叠加
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.fillStyle = `rgba(100, 255, 100, 0.3)`; // 微绿光
+                ctx.fillRect(x, y, size, size);
+                ctx.restore();
+            } else if (item.previewType === 'origin') {
+                // 原点图块稍微变暗
+                ctx.save();
+                ctx.fillStyle = `rgba(0, 0, 0, 0.4)`;
+                ctx.fillRect(x, y, size, size);
+                ctx.restore();
             }
 
+            // 边框
             ctx.save();
             ctx.lineWidth = 1; 
             
@@ -586,6 +730,8 @@
                 ctx.lineWidth = 2; 
             } else if (item.isReady) {
                 color = "#FFFF00"; 
+            } else if (item.previewType === 'preview') {
+                color = "#00FF00"; // 预览状态绿框
             }
 
             ctx.strokeStyle = color;
