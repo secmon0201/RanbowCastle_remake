@@ -1,1492 +1,858 @@
-{
-//=============================================================================
-// MOG_BattleCursor.js
-//=============================================================================
-
 /*:
- * @target MZ
- * @plugindesc [战斗] 自定义战斗光标 & 选中目标显示 & 指令逻辑修正
- * @author Mog
- * @url https://mogplugins.wordpress.com
- *
- * @param -> GENERAL
- * @desc
- *
- * @param Target Window
- * @parent -> GENERAL
- * @text 显示窗口（目标）
- * @desc 显示目标选择对话框
- * @type boolean
- * @default false
- *
- * @param Slide Effect
- * @parent -> GENERAL
- * @text 幻灯动画
- * @desc 幻灯动画
- * @type boolean
- * @default true
- *
- * @param Move Speed
- * @parent -> GENERAL
- * @text 滑动速度
- * @desc 光标移动速度(30%...300%)
- * @default 100
- * @type number
- * @min 30
- * @max 300
- * * @param Float Effect
- * @parent -> GENERAL
- * @text 浮点动画
- * @desc 浮点动画
- * @type boolean
- * @default true
- *
- * @param Align for Actor
- * @parent -> GENERAL
- * @desc 参与者的光标对齐方式
- * @text 对齐（参与者）
- * @type select
- * @default Above
- * @option 在下面
- * @value Below
- * @option 中心点
- * @value Center
- * @option 上面
- * @value Above
- * @option 左边
- * @value Left 
- * @option 右边
- * @value Right
- *
- * @param Align for Enemy
- * @parent -> GENERAL
- * @desc 敌人的光标对齐方式
- * @text 对齐（敌人）
- * @type select
- * @default Center
- * @option 下面
- * @value Below
- * @option 中心点
- * @value Center
- * @option 上面
- * @value Above
- * @option 左边
- * @value Left 
- * @option 右边
- * @value Right
- *
- * @param X-Axis Offset Actor
- * @parent -> GENERAL
- * @text X轴偏移（玩家）
- * @desc 参与者的X轴偏移量
- * @default 0
- *
- * @param Y-Axis Offset Actor
- * @parent -> GENERAL
- * @text Y轴偏移（玩家）
- * @desc 参与者的Y轴偏移量
- * @default 0
- *
- * @param X-Axis Offset Enemy
- * @parent -> GENERAL
- * @text X轴偏移（敌人）
- * @desc 敌人的X轴偏移量
- * @default 0
- *
- * @param Y-Axis Offset Enemy
- * @parent -> GENERAL
- * @text Y轴偏移（敌人）
- * @desc 敌人的Y轴偏移量
- * @default 0
- * * @param -----------------------
- * @desc
- *
- * @param -> NAME
- * @desc 名称显示配置
- *
- * @param Name Visible
- * @parent -> NAME
- * @text 显示名称
- * @desc 是否显示目标名称（光标上的浮动文字）
- * @type boolean
- * @default true
- *
- * @param Font Size
- * @parent -> NAME
- * @text 字体大小
- * @desc 名称字体大小
- * @default 18
- * @type number
- * @min 9
- * @max 48
- *
- * @param Font Bold
- * @parent -> NAME
- * @text 粗体
- * @desc 是否启用粗体
- * @type boolean
- * @default false
- *
- * @param Font Italic
- * @parent -> NAME
- * @text 字体倾斜
- * @desc 是否启用斜体
- * @type boolean
- * @default false
- *
- * @param ------------------------
- * @desc
- *
- * @param -> WINDOW UI
- * @desc 右下角名称窗口配置
- *
- * @param Window Width
- * @parent -> WINDOW UI
- * @text 窗口宽度
- * @desc 名称窗口的宽度
- * @default 200
- * @type number
- * @min 50
- * @max 400
- *
- * @param Window Height
- * @parent -> WINDOW UI
- * @text 窗口高度
- * @desc 名称窗口的高度
- * @default 60
- * @type number
- * @min 30
- * @max 200
- *
- * @param Window X Offset
- * @parent -> WINDOW UI
- * @text 窗口X偏移
- * @desc 距离右边缘的偏移量（正数向右，负数向左）
- * @default 20
- * @type number
- *
- * @param Window Y Offset
- * @parent -> WINDOW UI
- * @text 窗口Y偏移
- * @desc 距离下边缘的偏移量（正数向下，负数向上）
- * @default 20
- * @type number
- *
- * @param Text Color
- * @parent -> WINDOW UI
- * @text 文字颜色
- * @desc 名称文字的颜色（十六进制颜色码）
- * @default #ffffff
- *
- * @param Window Opacity
- * @parent -> WINDOW UI
- * @text 窗口透明度
- * @desc 窗口背景的透明度（0-255）
- * @default 180
- * @type number
- * @min 0
- * @max 255
- *
- * @param Window Back Color
- * @parent -> WINDOW UI
- * @text 窗口背景色
- * @desc 窗口背景的颜色（十六进制颜色码）
- * @default #000000
- *
- * @param Window Border Color
- * @parent -> WINDOW UI
- * @text 窗口边框色
- * @desc 窗口边框的颜色（十六进制颜色码）
- * @default #ffffff
- *
- * @param Window Border Width
- * @parent -> WINDOW UI
- * @text 边框宽度
- * @desc 窗口边框的粗细（0为无边框）
- * @default 2
- * @type number
- * @min 0
- * @max 10
- *
- * @param Text All Enemies
- * @parent -> WINDOW UI
- * @text 全体敌人文本
- * @desc 当目标为全体敌人时显示的文本
- * @default 敌方全体
- *
- * @param Text All Allies
- * @parent -> WINDOW UI
- * @text 全体队友文本
- * @desc 当目标为全体队友时显示的文本
- * @default 我方全体
- *
- * @param ------------------------
- * @desc
- *
- * @param -> ANIMATED
- * @desc 光标动画配置
- *
- * @param Animated
- * @parent -> ANIMATED
- * @text 启用帧动画
- * @desc 启用光标帧动画
- * @type boolean
- * @default false
- *
- * @param Frames
- * @parent -> ANIMATED
- * @text 帧数
- * @desc 动画的总帧数(2..100)
- * @type number
- * @default 3
- * @min 2
- * @max 100
- *
- * @param Animation Speed
- * @parent -> ANIMATED
- * @text 动画速度
- * @desc 动画播放速度(2..240)
- * @type number
- * @default 8
- * @min 2
- * @max 240
- *
- * @help  
- * =============================================================================
- * ♦♦♦ MOG - Battle Cursor 终极修复版 ♦♦♦
- * * 修复日志 (v2.0)：
- * 1. 【核心修复】在每一帧的更新循环中加入了强制检测：
- * 只要“角色指令窗口（攻击/技能/防御等）”是激活状态，强制隐藏帮助窗口。
- * 这可以彻底解决从攻击返回时，帮助窗口因为缓存机制而顽固显示的问题。
- * 2. 保留了之前所有的窗口不重叠、不隐藏指令菜单的修改。
- * =============================================================================
- */
- 
- 
+ * @target MZ
+ * @plugindesc [v3.1] 战斗光标重制版 - 动态绘图与平滑移动 (彩虹城堡定制修复版)
+ * @author Moghunter & RPG Maker MZ Plugin Master
+ * @url https://mogplugins.wordpress.com
+ * @orderAfter MOG_BattleCursor
+ *
+ * @param -> GENERAL
+ * @text —— 基础设置 ——
+ *
+ * @param Disable Actor Selection
+ * @parent -> GENERAL
+ * @text 禁用我方角色光标逻辑
+ * @desc true = 选择我方时使用系统原版窗口(解决与其他插件的冲突)。false = 使用MOG光标。
+ * @type boolean
+ * @default true
+ *
+ * @param Target Window
+ * @parent -> GENERAL
+ * @text 显示目标窗口
+ * @desc 是否显示右下角的目标名称窗口。
+ * @type boolean
+ * @default false
+ *
+ * @param Slide Effect
+ * @parent -> GENERAL
+ * @text 幻灯片移动
+ * @desc 光标在目标间切换时是否平滑滑动。
+ * @type boolean
+ * @default true
+ *
+ * @param Move Speed
+ * @parent -> GENERAL
+ * @text 移动速度
+ * @desc 光标滑动的速度 (30%...300%)。
+ * @default 100
+ * @type number
+ * @min 30
+ * @max 300
+ * * @param Align for Actor
+ * @parent -> GENERAL
+ * @text 对齐方式 (角色)
+ * @desc 光标相对于角色的对齐位置。建议 Center。
+ * @type select
+ * @default Center
+ * @option Center
+ * @option Above
+ * @option Below
+ * @option Left
+ * @option Right
+ *
+ * @param Align for Enemy
+ * @parent -> GENERAL
+ * @text 对齐方式 (敌人)
+ * @desc 光标相对于敌人的对齐位置。建议 Center。
+ * @type select
+ * @default Center
+ * @option Center
+ * @option Above
+ * @option Below
+ * @option Left
+ * @option Right
+ *
+ * @param -> PROCEDURAL
+ * @text —— 绘图设置 ——
+ *
+ * @param Cursor Radius
+ * @parent -> PROCEDURAL
+ * @text 光标半径
+ * @desc 箭头尖端距离中心的距离。针对132px敌人建议设为 80。
+ * @type number
+ * @default 80
+ *
+ * @param Arrow Size
+ * @parent -> PROCEDURAL
+ * @text 箭头大小
+ * @desc 三角形箭头的尺寸（像素）。
+ * @type number
+ * @default 24
+ *
+ * @param Arrow Color
+ * @parent -> PROCEDURAL
+ * @text 箭头颜色
+ * @desc Hex颜色代码。黄: #FFFF00, 红: #FF0000。
+ * @type string
+ * @default #FFFF00
+ *
+ * @param Pulse Speed
+ * @parent -> PROCEDURAL
+ * @text 呼吸速度
+ * @desc 箭头缩放移动的速度。数值越大越快。
+ * @type number
+ * @default 4
+ *
+ * @param Pulse Range
+ * @parent -> PROCEDURAL
+ * @text 呼吸幅度
+ * @desc 箭头浮动的像素距离。
+ * @type number
+ * @default 8
+ *
+ * @param -> NAME WINDOW
+ * @text —— 名称窗口 ——
+ *
+ * @param Window Width
+ * @parent -> NAME WINDOW
+ * @text 窗口宽度
+ * @default 200
+ *
+ * @param Window Height
+ * @parent -> NAME WINDOW
+ * @text 窗口高度
+ * @default 60
+ *
+ * @param Window X Offset
+ * @parent -> NAME WINDOW
+ * @text X轴偏移
+ * @desc 距离屏幕右边缘的距离。
+ * @default 20
+ *
+ * @param Window Y Offset
+ * @parent -> NAME WINDOW
+ * @text Y轴偏移
+ * @desc 距离屏幕下边缘的距离。
+ * @default 20
+ *
+ * @param Text All Enemies
+ * @parent -> NAME WINDOW
+ * @text 全体敌人文本
+ * @default 敌方全体
+ *
+ * @param Text All Allies
+ * @parent -> NAME WINDOW
+ * @text 全体队友文本
+ * @default 我方全体
+ *
+ * @help  
+ * =============================================================================
+ * ■ MOG_BattleCursor_Redux (融合重制版 v3.1)
+ * =============================================================================
+ * 这是一个结合了 Moghunter 原版逻辑与 Canvas 动态绘图技术的定制插件。
+ * 专为竖屏 JRPG《彩虹城堡》重制版设计。
+ *
+ * ★ v3.1 更新：
+ * 增加了“禁用我方角色光标逻辑”参数。开启后，选择队友时将交还控制权给系统
+ * 或其他UI插件（如Sq_BattleComplete），从而解决冲突导致的窗口定格问题。
+ *
+ * =============================================================================
+ */
+
 (() => {
-     
-　　var Imported = Imported || {};
-　　Imported.MOG_BattleCursor = true;
-　　var Moghunter = Moghunter || {}; 
-
-
-    Moghunter.parameters = PluginManager.parameters('MOG_BattleCursor');
-    // 基础配置
-    Moghunter.bcursor_x_actor = Number(Moghunter.parameters['X-Axis Offset Actor'] || 0);
-    Moghunter.bcursor_y_actor = Number(Moghunter.parameters['Y-Axis Offset Actor'] || 0);    
-    Moghunter.bcursor_x_enemy = Number(Moghunter.parameters['X-Axis Offset Enemy'] || 0);
-    Moghunter.bcursor_y_enemy = Number(Moghunter.parameters['Y-Axis Offset Enemy'] || 0);    
-    Moghunter.bcursor_slide = String(Moghunter.parameters['Slide Effect'] || "false");
-    Moghunter.bcursor_moveSpeed  = Number(Moghunter.parameters['Move Speed'] || 100);
-    Moghunter.bcursor_float = String(Moghunter.parameters['Float Effect'] || "true");
-    Moghunter.bcursor_alignActor = String(Moghunter.parameters['Align for Actor'] || "Above");
-    Moghunter.bcursor_alignEnemy = String(Moghunter.parameters['Align for Enemy'] || "Above");
-    
-    // 名称配置
-    Moghunter.bcursor_name_visible = String(Moghunter.parameters['Name Visible'] || "true");
-    Moghunter.bcursor_fontSize = Number(Moghunter.parameters['Font Size'] || 18);
-    Moghunter.bcursor_fontBold = String(Moghunter.parameters['Font Bold'] || "false");
-    Moghunter.bcursor_fontItalic = String(Moghunter.parameters['Font Italic'] || "false");
-    Moghunter.bcursor_TargetWindow = String(Moghunter.parameters['Target Window'] || "false");
-    
-    // 动画配置
-    Moghunter.bcursor_animated = String(Moghunter.parameters['Animated'] || "true");
-    Moghunter.bcursor_aniFrames = Number(Moghunter.parameters['Frames'] || 3);
-    Moghunter.bcursor_aniSpeed = Number(Moghunter.parameters['Animation Speed'] || 5);
-
-    // 窗口UI配置
-    Moghunter.windowWidth = Number(Moghunter.parameters['Window Width'] || 200);
-    Moghunter.windowHeight = Number(Moghunter.parameters['Window Height'] || 60);
-    Moghunter.windowXOffset = Number(Moghunter.parameters['Window X Offset'] || 20);
-    Moghunter.windowYOffset = Number(Moghunter.parameters['Window Y Offset'] || 20);
-    Moghunter.textColor = String(Moghunter.parameters['Text Color'] || "#ffffff");
-    Moghunter.windowOpacity = Number(Moghunter.parameters['Window Opacity'] || 180);
-    Moghunter.windowBackColor = String(Moghunter.parameters['Window Back Color'] || "#000000");
-    Moghunter.windowBorderColor = String(Moghunter.parameters['Window Border Color'] || "#ffffff");
-    Moghunter.windowBorderWidth = Number(Moghunter.parameters['Window Border Width'] || 2);
-    
-    // 全体文本配置
-    Moghunter.textAllEnemies = String(Moghunter.parameters['Text All Enemies'] || "敌方全体");
-    Moghunter.textAllAllies = String(Moghunter.parameters['Text All Allies'] || "我方全体");
-
-
-//=============================================================================
-// ■■■ Game_Temp ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Initialize
-//==============================
-const _mog_bCursor_game_temp_initialize = Game_Temp.prototype.initialize
-Game_Temp.prototype.initialize = function() {
-    _mog_bCursor_game_temp_initialize.call(this);
-    this._mogBattleCursor = {};
-    this._mogBattleCursor.needRefresh1 = false;
-    this._mogBattleCursor.needRefresh2 = false;
-    this._mogBattleCursor.x = 0;
-    this._mogBattleCursor.y = 0;
-    this._mogBattleCursor.slideTime = 0;
-    this._mogBattleCursor.isForOpponent = false;
-    this._mogBattleCursor.isForAll = false;
-    this._mogBattleCursor.isForEveryone = false
-};
-
-//=============================================================================
-// ■■■ Game_Party ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  addActor
-//==============================
-const _mog_bCursor_game_party_addActor = Game_Party.prototype.addActor;
-Game_Party.prototype.addActor = function(actorId) {
-    _mog_bCursor_game_party_addActor.call(this,actorId);
-    if (this.inBattle()) {$gameTemp._mogBattleCursor.needRefresh1 = true};
-};
-
-//==============================
-// ♦ ALIAS ♦  removeActor
-//==============================
-const _mog_bCursor_game_party_removeActor = Game_Party.prototype.removeActor;
-Game_Party.prototype.removeActor = function(actorId) {
-    _mog_bCursor_game_party_removeActor.call(this,actorId);
-    if (this.inBattle()) {$gameTemp._mogBattleCursor.needRefresh1 = true};
-};
-
-//=============================================================================
-// ■■■ Game_Battler ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Initialize
-//==============================
-const _mog_bCursor_game_battler_initMembers = Game_Battler.prototype.initMembers;
-Game_Battler.prototype.initMembers = function() {
-    _mog_bCursor_game_battler_initMembers.call(this);
-    this.initBattleCursor();
-};
-
-//==============================
-// * initBattleCursor
-//==============================
-Game_Battler.prototype.initBattleCursor = function() {
-    this._battleCursor = {};
-    this._battleCursor.enable = true;
-    this._battleCursor.X_Offset = 0;
-    this._battleCursor.Y_Offset = 0;
-};
-
-//==============================
-// * notetags mg
-//==============================
-Game_Battler.prototype.notetags_mg = function() {
-    if (this.isEnemy()) {return this.enemy().note.split(/[\r\n]+/)};
-    if (this.isActor()) {return this.actor().note.split(/[\r\n]+/)};
-};
-
-//==============================
-// * setupBattleCursor Note
-//==============================
-Game_Battler.prototype.setupBattleCursorNote = function() {
-     this.notetags_mg().forEach(function(note) {
-         const note_data = note.split(' : ')
-         if (note_data[0].toLowerCase() == "battle cursor offset"){
-             this._battleCursor.X_Offset = Number(note_data[1]);
-             this._battleCursor.Y_Offset = Number(note_data[2]);
-         }; 
-    },this);
-};
-
-//=============================================================================
-// ■■■ Game_Actor ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Setup
-//==============================
-const _mog_bCursor_game_actor_setup = Game_Actor.prototype.setup;
-Game_Actor.prototype.setup = function(actorId) {
-    _mog_bCursor_game_actor_setup.call(this,actorId)
-    this.setupBattleCursorNote();
-};
-
-//=============================================================================
-// ■■■ Game_Enemy ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Setup
-//==============================
-const _mog_bCursor_game_enemy_setup = Game_Enemy.prototype.setup;
-Game_Enemy.prototype.setup = function(enemyId, x, y) {
-     _mog_bCursor_game_enemy_setup.call(this,enemyId, x, y);
-     this.setupBattleCursorNote();
-};
-
-//==============================
-// ♦ ALIAS ♦  transform
-//==============================
-const _mog_battleCursor_game_enemy_transform = Game_Enemy.prototype.transform;
-Game_Enemy.prototype.transform = function(enemyId) {
-    _mog_battleCursor_game_enemy_transform.call(this,enemyId);
-    $gameTemp._mogBattleCursor.needRefresh2 = true; 
-    this.setupBattleCursorNote();
-};
-
-//=============================================================================
-// ■■■ Game Action ■■■
-//=============================================================================
-
-//==============================
-//  ♦ OVERWRITE ♦ NeedsSelection
-//==============================
-Game_Action.prototype.needsSelection = function() {
-    return this.checkItemScope([1, 2, 7, 8, 9, 10,14]);
-};
-
-//==============================
-// ♦ ALIAS ♦  apply
-//==============================
-const _mog_battleCursor_game_action_apply = Game_Action.prototype.apply;
-Game_Action.prototype.apply = function(target) {
-    _mog_battleCursor_game_action_apply.call(this,target);
-    if (target && target.isEnemy() && target.isDead()) {$gameTemp._mogBattleCursor.needRefresh2 = true};
-};
-
-//=============================================================================
-// ■■■ Window_BattleActor ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Initialize
-//==============================
-const _mog_battleCursor_window_battleActor_initialize = Window_BattleActor.prototype.initialize;
-Window_BattleActor.prototype.initialize = function(rect) {
-    _mog_battleCursor_window_battleActor_initialize.call(this,rect);
-    this._bcursor_winVisble = String(Moghunter.bcursor_TargetWindow) == "true" ? true : false;
-    if (!$dataSystem.optSideView) {this._bcursor_winVisble = true};
-    this._bcSo = (Graphics.height * 2);
-};
-
-//==============================
-// ♦ ALIAS ♦  Select
-//==============================
-const _mog_battleCursor_window_battleactor_select = Window_BattleActor.prototype.select;
-Window_BattleActor.prototype.select = function(index) {
-       _mog_battleCursor_window_battleactor_select.call(this,index);
-       if (this.battleCursorNeedSelectAllActors()) {
-           this.battleCursorSelectAllActors()};    
-};
-
-//==============================
-// * battleCursorNeedSelectAllActors
-//==============================
-Window_BattleActor.prototype.battleCursorNeedSelectAllActors = function() {
-   if ($gameTemp._mogBattleCursor.isForEveryone) {return true};
-   if ($gameTemp._mogBattleCursor.isForOpponent) {return false};
-   if (!$gameTemp._mogBattleCursor.isForAll) {return false};
-   return true;
-};
-
-//==============================
-// * battleCursorSelectAllActors
-//==============================
-Window_BattleActor.prototype.battleCursorSelectAllActors = function() {
-    for (const member of $gameParty.battleMembers()) {
-         member.select();
-    };
-    this.setCursorAll(true);
-};
-
-//==============================
-// ♦ ALIAS ♦ hide
-//==============================
-const _mog_battleCursor_window_battleactor_hide = Window_BattleActor.prototype.hide;
-Window_BattleActor.prototype.hide = function(index) {
-       _mog_battleCursor_window_battleactor_hide.call(this);
-       this.setCursorAll(false);
-};
-
-//==============================
-// ♦ ALIAS ♦  cursorDown
-//==============================
-const _mog_battleCursor_window_battleActor_cursorDown = Window_BattleActor.prototype.cursorDown;
-Window_BattleActor.prototype.cursorDown = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(1);return}
-    _mog_battleCursor_window_battleActor_cursorDown.call(this,wrap);
-};
-
-//==============================
-// ♦ ALIAS ♦  cursorUp
-//==============================
-const _mog_battleCursor_window_battleActor_cursorUp = Window_BattleActor.prototype.cursorUp;
-Window_BattleActor.prototype.cursorUp = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(-1);return}
-    _mog_battleCursor_window_battleActor_cursorUp.call(this,wrap);
-};
-
-//=============================================================================
-// ■■■ Window_BattleEnemy ■■■
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦  Initialize
-//==============================
-const _mog_battleCursor_window_battleenemy_initialize = Window_BattleEnemy.prototype.initialize;
-Window_BattleEnemy.prototype.initialize = function(rect) {
-    _mog_battleCursor_window_battleenemy_initialize.call(this,rect);
-    this._bcursor_winVisble = String(Moghunter.bcursor_TargetWindow) == "true" ? true : false;
-    this._bcSo = (Graphics.height * 2);
-};
-
-//==============================
-// ♦ ALIAS ♦  Select
-//==============================
-const _mog_battleCursor_window_battleenemy_select = Window_BattleEnemy.prototype.select
-Window_BattleEnemy.prototype.select = function(index) {
-    _mog_battleCursor_window_battleenemy_select.call(this,index);
-    if (this.battleCursorNeedSelectAllEnemies()) {this.battleCursorSelectAllEnemies()};    
-};
-
-//==============================
-// * battleCursorNeedSelectAllEnemies
-//==============================
-Window_BattleEnemy.prototype.battleCursorNeedSelectAllEnemies = function() {
-   if ($gameTemp._mogBattleCursor.isForEveryone) {return true};
-   if (!$gameTemp._mogBattleCursor.isForOpponent) {return false};
-   if (!$gameTemp._mogBattleCursor.isForAll) {return false};
-   return true;
-};
-
-//==============================
-// * battleCursorSelectAllEnemies
-//==============================
-Window_BattleEnemy.prototype.battleCursorSelectAllEnemies = function() {
-    for (const member of $gameTroop.aliveMembers()) {
-         member.select();
-    };
-    this.setCursorAll(true);
-};
-
-//==============================
-// ♦ ALIAS ♦  hide
-//==============================
-const _mog_battleCursor_window_battleenemy_hide = Window_BattleEnemy.prototype.hide;
-Window_BattleEnemy.prototype.hide = function() {
-     _mog_battleCursor_window_battleenemy_hide.call(this);
-     this.setCursorAll(false);
-};
-
-//==============================
-// * itemRectBatttleCursor
-//==============================
-Window_BattleEnemy.prototype.itemRectBatteCursor = function(index) {
-    const maxCols = this.maxCols();
-    const itemWidth = this.itemWidth();
-    const itemHeight = this.itemHeight();
-    const colSpacing = this.colSpacing();
-    const rowSpacing = this.rowSpacing();
-    const col = index % maxCols;
-    const row = Math.floor(index / maxCols);
-    const x = itemWidth + colSpacing / 1 - this.scrollBaseX();
-    const y = row * itemHeight + rowSpacing / 1 - this.scrollBaseY();
-    const width = itemWidth - colSpacing;
-    const height = itemHeight - rowSpacing;
-    return new Rectangle(x, y, width, height);
-};
-
-//==============================
-// ♦ OVERWRITE ♦ refreshCursorForAll
-//==============================
-Window_BattleEnemy.prototype.refreshCursorForAll = function() {
-    const maxItems = this.maxItems();
-    if (maxItems > 0) {
-        const rect = this.itemRect(0);
-        rect.enlarge(this.itemRectBatteCursor(999));
- 
-        this.setCursorRect(rect.x, rect.y, rect.width, rect.height);
-    } else {
-        this.setCursorRect(0, 0, 0, 0);
-    };
-    this._index = 0;
-};
-
-//==============================
-// ♦ ALIAS ♦  cursorDown
-//==============================
-const _mog_battleCursor_window_battleEnemy_cursorDown = Window_BattleEnemy.prototype.cursorDown;
-Window_BattleEnemy.prototype.cursorDown = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(1);return};
-    _mog_battleCursor_window_battleEnemy_cursorDown.call(this,wrap);
-};
-
-//==============================
-// ♦ ALIAS ♦  cursorUp
-//==============================
-const _mog_battleCursor_window_battleEnemy_cursorUp = Window_BattleEnemy.prototype.cursorUp;
-Window_BattleEnemy.prototype.cursorUp = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(-1);return};
-    _mog_battleCursor_window_battleEnemy_cursorUp.call(this,wrap);
-};
-
-//==============================
-// ♦ 修复：交换左右按键逻辑 ♦  cursorRight
-//==============================
-const _mog_battleCursor_window_battleEnemy_cursorRight = Window_BattleEnemy.prototype.cursorRight;
-Window_BattleEnemy.prototype.cursorRight = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(-1);return}; // 右按键 → 上一个目标
-    _mog_battleCursor_window_battleEnemy_cursorRight.call(this,wrap);
-};
-
-//==============================
-// ♦ 修复：交换左右按键逻辑 ♦  cursorLeft
-//==============================
-const _mog_battleCursor_window_battleEnemy_cursorLeft = Window_BattleEnemy.prototype.cursorLeft;
-Window_BattleEnemy.prototype.cursorLeft = function(wrap) {
-    if (!this._bcursor_winVisble) {this.inputIndex(1);return}; // 左按键 → 下一个目标
-    _mog_battleCursor_window_battleEnemy_cursorLeft.call(this,wrap);
-};
-
-//=============================================================================
-// ■■■ Window Selectable ■■■ 
-//=============================================================================
-
-//==============================
-// * input Index
-//==============================
-Window_Selectable.prototype.inputIndex = function(value) {
-    var index = this.index();
-    var maxValue = this.maxItems() - 1;
-    index += value;
-    if (index > maxValue) {index = 0};
-    if (index < 0) {index = maxValue};
-    this.smoothSelect(index)
-};
-
-//=============================================================================
-// ■■■ Spriteset Battle ■■■ 
-//=============================================================================
-
-//==============================
-// * create Sprt Field 1
-//==============================
-Spriteset_Battle.prototype.createSprtField1 = function() {
-    this._sprtField1 = new Sprite();
-    this._sprtField1.z = 1;
-    this.addChild(this._sprtField1);
-};
-
-//==============================
-// * create Sprt Field 2
-//==============================
-Spriteset_Battle.prototype.createSprtField2 = function() {
-    this._sprtField2 = new Sprite();
-    this._sprtField2.z = 5;
-    this.addChild(this._sprtField2);
-};
-
-//==============================
-// ♦ ALIAS ♦  Create Spriteset
-//==============================
-const _mog_bCursor_spriteset_battle_createLowerLayer = Spriteset_Battle.prototype.createLowerLayer
-Spriteset_Battle.prototype.createLowerLayer = function() {
-    _mog_bCursor_spriteset_battle_createLowerLayer.call(this);
-    if (!this._sprtField2) {this.createSprtField2()};
-    this.createBattleCursor();    
-    // 创建右下角名称窗口（使用配置参数）
-    this.createBattleNameWindow();
-};
-
-//==============================
-// * 创建右下角名称窗口（使用配置参数）
-//==============================
-Spriteset_Battle.prototype.createBattleNameWindow = function() {
-    // 窗口位置：基于配置参数计算（右下角）
-    const rect = new Rectangle(
-        Graphics.boxWidth - Moghunter.windowWidth - Moghunter.windowXOffset,  // X坐标 = 屏幕宽度 - 窗口宽 - X偏移
-        Graphics.boxHeight - Moghunter.windowHeight - Moghunter.windowYOffset, // Y坐标 = 屏幕高度 - 窗口高 - Y偏移
-        Moghunter.windowWidth,  // 窗口宽度（配置参数）
-        Moghunter.windowHeight  // 窗口高度（配置参数）
-    );
-    this._battleNameWindow = new Window_BattleTargetName(rect);
-    this._battleNameWindow.z = 100; // 窗口层级：确保在最上层
-    this.addChild(this._battleNameWindow);
-};
-
-//==============================
-// * createBattleCursor
-//==============================
-Spriteset_Battle.prototype.createBattleCursor = function() {
-    for (const sprite of this.battlerSprites()) {
-         const battlerSprite = new BattleCursorSprite(this,sprite);
-         battlerSprite.z = 5;
-         this._sprtField2.addChild(battlerSprite);
-    };
-};
-
-//=============================================================================
-// ■■■  Scene Battle ■■■ 
-//=============================================================================
-
-//==============================
-// ♦ ALIAS ♦ update
-//==============================
-const _mog_bCursor_scene_battle_update = Scene_Battle.prototype.update; 
-Scene_Battle.prototype.update = function() {
-     _mog_bCursor_scene_battle_update.call(this);
-     this.updateBattleCursor();
-};
-
-//==============================
-// * update Battle Cursor
-//==============================
-Scene_Battle.prototype.updateBattleCursor = function() {
-    if ($gameTemp._mogBattleCursor.slideTime > 0) {
-        $gameTemp._mogBattleCursor.slideTime--;
-        if ($gameTemp._mogBattleCursor.slideTime == 0) {
-            $gameTemp._mogBattleCursor.x = 0;
-            $gameTemp._mogBattleCursor.y = 0;
-        };
-    };
-    this.updateBattleCursorTargetWindow();
-    
-    // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-    // 【v2.0 终极修复】：帧更新强制隐藏逻辑
-    // 如果角色指令窗口（Attack/Skill/Guard/Item）是激活的，
-    // 那么绝对没有任何理由显示技能帮助窗口。
-    // 这行代码会覆盖所有“返回”操作后可能产生的残留显示。
-    if (this._actorCommandWindow && this._actorCommandWindow.active) {
-        if (this._helpWindow && this._helpWindow.visible) {
-            this._helpWindow.hide();
-            this._helpWindow.visible = false;
-        }
-    }
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-    
-    $gameTemp._mogBattleCursor.needRefresh1 = false;
-    $gameTemp._mogBattleCursor.needRefresh2 = false;    
-};
-
-//==============================
-// * updateBattleCursorTargetWindow
-//==============================
-Scene_Battle.prototype.updateBattleCursorTargetWindow= function() {
-    if ($gameTemp._mogBattleCursor.needRefresh1 && this._actorWindow.active) {
-        this._actorWindow.refresh();
-        this._actorWindow.select(0);
-    };
-    if ($gameTemp._mogBattleCursor.needRefresh2 && this._enemyWindow.active) {
-        const enemy = this._enemyWindow.enemy();
-        this._enemyWindow.refresh();
-        if (!enemy.isDead()) {
-            var checked = false;
-            for (var i = 0; i < $gameTroop.aliveMembers().length; i++) {    
-                 if ($gameTroop.aliveMembers()[i] == enemy) {this._enemyWindow.select(i);checked = true};
-            };
-            if (!checked) {this._enemyWindow.select(0)};
-        } else {
-            this._enemyWindow.select(0);
-        };
-    };
-    if (this._enemyWindow && !this._enemyWindow._bcursor_winVisble) {this._enemyWindow.y = this._enemyWindow._bcSo};
-    if (this._actorWindow && !this._actorWindow._bcursor_winVisble) {this._actorWindow.y = this._actorWindow._bcSo};
-};
-
-//==============================
-// ♦ ALIAS ♦ onEnemyCancel
-//==============================
-const _mog_bCursor_scene_battle_onEnemyCancel = Scene_Battle.prototype.onEnemyCancel;
-Scene_Battle.prototype.onEnemyCancel = function() {
-      this._actorWindow.hide();
-      _mog_bCursor_scene_battle_onEnemyCancel.call(this);
-      
-      const action = BattleManager.inputtingAction();
-      if (action) {
-          if (action.isItem() && this._itemWindow) { 
-              this._itemWindow.show(); 
-              if (this._helpWindow) this._helpWindow.show();
-          }
-          else if (action.isSkill() && this._skillWindow) { 
-              const attackSkillId = BattleManager.actor() ? BattleManager.actor().attackSkillId() : 1;
-              
-              if (action.item().id === attackSkillId || action.item().id === 1) {
-                  // 回退到指令选择
-                  if (this._actorCommandWindow) {
-                       this._actorCommandWindow.show();
-                       this._actorCommandWindow.activate();
-                  }
-                  this._skillWindow.hide(); 
-                  // 这里的 hide() 是为了瞬时响应，后续由 updateBattleCursor 持续镇压
-                  if (this._helpWindow) {
-                      this._helpWindow.hide(); 
-                      this._helpWindow.visible = false;
-                  }
-              } else {
-                  // 回退到技能列表
-                  if (BattleManager.actor()) {
-                      this._skillWindow.setActor(BattleManager.actor());
-                  }
-                  this._skillWindow.show(); 
-                  if (this._helpWindow) this._helpWindow.show();
-              }
-          }
-          // 如果不是技能也不是物品，回退到指令窗口
-          else if (this._actorCommandWindow) { 
-              this._actorCommandWindow.show(); 
-          }
-      }
-};
-
-//==============================
-// ♦ ALIAS (NEW) ♦ onActorCancel
-//==============================
-// 【新增】：取消选择队友时，恢复显示对应的窗口
-const _mog_bCursor_scene_battle_onActorCancel = Scene_Battle.prototype.onActorCancel;
-Scene_Battle.prototype.onActorCancel = function() {
-    _mog_bCursor_scene_battle_onActorCancel.call(this);
-    
-    // 【修改 v1.2】：逻辑同上，修复取消选择队友时的窗口恢复
-    const action = BattleManager.inputtingAction();
-    if (action) {
-        if (action.isItem() && this._itemWindow) { 
-            this._itemWindow.show(); 
-            if (this._helpWindow) this._helpWindow.show();
-        }
-        else if (action.isSkill() && this._skillWindow) { 
-             const attackSkillId = BattleManager.actor() ? BattleManager.actor().attackSkillId() : 1;
-             
-             if (action.item().id === attackSkillId || action.item().id === 1) {
-                 if (this._actorCommandWindow) {
-                     this._actorCommandWindow.show();
-                     this._actorCommandWindow.activate();
-                 }
-                 this._skillWindow.hide();
-                 if (this._helpWindow) {
-                     this._helpWindow.hide();
-                     this._helpWindow.visible = false;
-                 }
-             } else {
-                 if (BattleManager.actor()) {
-                     this._skillWindow.setActor(BattleManager.actor());
-                 }
-                 this._skillWindow.show();
-                 if (this._helpWindow) this._helpWindow.show();
-             }
-        }
-        else if (this._actorCommandWindow) { 
-            this._actorCommandWindow.show(); 
-        }
-    }
-};
-
-//==============================
-// ♦ ALIAS ♦ onSelectAction
-//==============================
-const _mog_bCursor_scene_battle_onSelectAction = Scene_Battle.prototype.onSelectAction;
-Scene_Battle.prototype.onSelectAction = function() {
-    this.battleCursorOnSelectAction();
-    _mog_bCursor_scene_battle_onSelectAction.call(this);
-    if (this._enemyWindow.active && $gameTemp._mogBattleCursor.isForEveryone) {
-        this._actorWindow.battleCursorSelectAllActors();
-    }
-    
-    if (this._skillWindow && this._skillWindow.visible) { this._skillWindow.hide(); }
-    if (this._itemWindow && this._itemWindow.visible) { this._itemWindow.hide(); }
-    
-    // 强制显示指令窗口（v1.8需求）
-    // 【Fix by Gemini】: 增加 isInputting 判断，防止在不需要目标选择（如防御）直接结束输入时，窗口残留
-    if (this._actorCommandWindow && BattleManager.isInputting()) { this._actorCommandWindow.show(); } 
-    
-    // 强制显示指令窗口（v1.8需求）
-    if (this._actorCommandWindow) { this._actorCommandWindow.show(); } 
-    
-    // 【v1.7 修复】：开始选择目标时，强制隐藏“战斗/逃跑”窗口
-    if (this._partyCommandWindow) { this._partyCommandWindow.hide(); }
-    
-    // 根据动作类型决定是否显示帮助窗口
-    const action = BattleManager.inputtingAction();
-    if (this._helpWindow) {
-        if (action && (
-            action.isAttack() || 
-            action.isGuard() || 
-            (action.isSkill() && action.item().id === 1)
-        )) {
-            this._helpWindow.hide();
-            this._helpWindow.visible = false;
-        } else {
-            this._helpWindow.show();
-            this._helpWindow.visible = true;
-            this._helpWindow.opacity = 255;
-        }
-    }
-};
-//==============================
-// ♦ ALIAS (NEW) ♦ commandAttack
-//==============================
-// 【新增 v1.6】：按下攻击指令时强制隐藏帮助窗口
-const _mog_scene_battle_commandAttack = Scene_Battle.prototype.commandAttack;
-Scene_Battle.prototype.commandAttack = function() {
-    _mog_scene_battle_commandAttack.call(this);
-    if (this._helpWindow) { this._helpWindow.hide(); }
-};
-
-//==============================
-// ♦ ALIAS (NEW) ♦ commandGuard
-//==============================
-// 【新增 v1.6】：按下防御指令时强制隐藏帮助窗口
-const _mog_scene_battle_commandGuard = Scene_Battle.prototype.commandGuard;
-Scene_Battle.prototype.commandGuard = function() {
-    _mog_scene_battle_commandGuard.call(this);
-    if (this._helpWindow) { this._helpWindow.hide(); }
-};
-
-//==============================
-// * battleCursorOnSelectAction
-//==============================
-Scene_Battle.prototype.battleCursorOnSelectAction = function() {
-    const action = BattleManager.inputtingAction();
-    $gameTemp._mogBattleCursor.isForOpponent = action.isForOpponent();
-    $gameTemp._mogBattleCursor.isForAll = action.isForAll();
-    $gameTemp._mogBattleCursor.isForEveryone = action.isForEveryone();
-};
-
-//==============================
-// ♦ ALIAS (NEW) ♦ startPartyCommandSelection
-//==============================
-// 【新增】：重要修复！当回合开始需要选择“战斗/逃跑”时，强制显示窗口
-const _mog_scene_battle_startPartyCommandSelection = Scene_Battle.prototype.startPartyCommandSelection;
-Scene_Battle.prototype.startPartyCommandSelection = function() {
-    _mog_scene_battle_startPartyCommandSelection.call(this);
-    if (this._partyCommandWindow) { this._partyCommandWindow.show(); }
-};
-
-//==============================
-// ♦ ALIAS (NEW) ♦ startActorCommandSelection
-//==============================
-// 【新增】：重要修复！当轮到角色行动需要输入指令时，强制显示窗口
-const _mog_scene_battle_startActorCommandSelection = Scene_Battle.prototype.startActorCommandSelection;
-Scene_Battle.prototype.startActorCommandSelection = function() {
-    _mog_scene_battle_startActorCommandSelection.call(this);
-    if (this._actorCommandWindow) { this._actorCommandWindow.show(); }
-    
-    if (this._partyCommandWindow) { this._partyCommandWindow.hide(); }
-    
-    // 【v2.0】确保开始选择指令时，帮助窗口也是隐藏的
-    if (this._helpWindow) { this._helpWindow.hide(); }
-};
-
-
-//=============================================================================
-// ■■■  BattleCursorSprite ■■■ 
-//=============================================================================
-function BattleCursorSprite() {
-    this.initialize.apply(this, arguments);
-};
-
-BattleCursorSprite.prototype = Object.create(Sprite.prototype);
-BattleCursorSprite.prototype.constructor = BattleCursorSprite;
-
-//==============================
-// * Initialize
-//==============================
-BattleCursorSprite.prototype.initialize = function(spriteset,sprite) {
-    Sprite.prototype.initialize.call(this); 
-    this._spriteset = spriteset;
-    this._battlerSprite = sprite;
-    this._position = {};
-    this._position.x = 0;
-    this._position.y = 0;
-    this._position.height = 0;
-    this._position.xOffset = 0;
-    this._position.yOffset = 0;
-    this._effect = {};
-    this._effect.wave = String(Moghunter.bcursor_float) == "true" ? true : false;
-    this._effect.waveX = 0;
-    this._effect.waveY = 0;
-    this._effect.waveMode = 0;
-    this._effect.waveTime = 0;
-    this._effect.waveSpeed = 0;
-    this._anime = {};
-    this._anime.enabled = String(Moghunter.bcursor_animated) == "true" ? true : false;
-    this._anime.index = 0;
-    this._anime.frameMax = (Math.min(Math.max(Moghunter.bcursor_aniFrames,2),100));
-    this._anime.time1 = 0;
-    this._anime.time2 = (Math.min(Math.max(Moghunter.bcursor_aniSpeed,2),240));
-    this._anime.width = 0;
-    this._anime.height = 0;
-    this._align = 0
-    this.refreshBattler();
-    this.prepareBitmap();
-    this.visible = false;
-    this.opacity = 0;
-    this._moveSpeed = (Math.min(Math.max(Moghunter.bcursor_moveSpeed,30),300));
-    if (String(Moghunter.bcursor_slide) != "true") {this._moveSpeed = 3000};
-    this._xf = ((Graphics.width - Graphics.boxWidth) / 2);
-    this._yf = ((Graphics.height - Graphics.boxHeight) / 2);    
-};
-
-//==============================
-// * getAlign
-//==============================
-BattleCursorSprite.prototype.getAlign = function(mode) {    
-     if (mode == "Below") {
-         return 0;
-     } else if (mode == "Center") {
-         return 1;
-     } else if (mode == "Left") {
-         return 3;
-     } else if (mode == "Right") {
-         return 4;
-     } else {
-         return 2;
-     } 
-};
-
-//==============================
-// * prepareAnimation
-//==============================
-BattleCursorSprite.prototype.prepareAnimation = function() {    
-    this._anime.width = this.setCursorBitmap().width / this._anime.frameMax;
-    this._anime.height = this.setCursorBitmap().height;
-    this.refreshFrameAnimation();
-};
-
-//==============================
-// * updateAnime
-//==============================
-BattleCursorSprite.prototype.updateAnime = function() {
-    this._anime.time1++;
-    if (this._anime.time1 > this._anime.time2) {
-        this._anime.time1 = 0;
-        this.refreshFrameAnimation();
-    };
-};
-
-//==============================
-// * refresh Frame Animation
-//==============================
-BattleCursorSprite.prototype.refreshFrameAnimation = function() {
-    this._anime.index++;
-    if (this._anime.index > (this._anime.frameMax - 1)) {this._anime.index = 0};
-    const sx = this._anime.width * this._anime.index;
-    this._cursorSprite.setFrame(sx, 0, this._anime.width, this._anime.height);
-};
-
-//==============================
-// * move Speed
-//==============================
-BattleCursorSprite.prototype.moveSpeed = function() {
-   return this._moveSpeed;
-};
-
-//==============================
-// * prepare Bitmap
-//==============================
-BattleCursorSprite.prototype.prepareBitmap = function() {
-    this._cursorBitmap1 = ImageManager.loadSystem("BattleCursor_A");
-    this._cursorBitmap2 = ImageManager.loadSystem("BattleCursor_B");
-};
-
-//==============================
-// * create Sprites
-//==============================
-BattleCursorSprite.prototype.createSprites = function() {   
-    this._cursorSprite = new Sprite();
-    this._cursorSprite.z = 5;
-    this._cursorSprite.anchor.x = 0.5;
-    this._cursorSprite.anchor.y = 2;
-    this.addChild(this._cursorSprite);
-    this._nameSprite = new Sprite(new Bitmap(160,48));
-    this._nameSprite.z = 10;
-    // 隐藏原光标上的名称显示（避免重复）
-    this._nameSprite.visible = false; 
-    this._nameSprite.bitmap.fontSize = Moghunter.bcursor_fontSize;
-    this._nameSprite.bitmap.fontBold = String(Moghunter.bcursor_fontBold) == "true" ? true : false;
-    this._nameSprite.bitmap.fontItalic = String(Moghunter.bcursor_fontItalic) == "true" ? true : false;
-    this.addChild(this._nameSprite);
-    if (this._battler) {this.refreshBattleCursor()};
-};
-
-//==============================
-// * refreshBattler
-//==============================
-BattleCursorSprite.prototype.refreshBattler = function() {   
-     this._battler = this.setBattler();
-};
-
-//==============================
-// * setBattler
-//==============================
-BattleCursorSprite.prototype.setBattler = function() {   
-     if (this._battlerSprite) {
-         return this._battlerSprite._battler;
-     };
-     return null;
-};
-
-//==============================
-// * Need Refresh
-//==============================
-BattleCursorSprite.prototype.needRefresh = function() {
-    if (this._battlerSprite) {
-        if ($gameTemp._mogBattleCursor.needRefresh1) {return true};
-        if ($gameTemp._mogBattleCursor.needRefresh2) {return true};
-        if (this._battler != this._battlerSprite._battler) {return true};
-        if (this._battler && this._position.width == 0 && this._position.height == 0) {
-           if (this._battlerSprite._mainSprite) { 
-               if (this._battlerSprite._mainSprite.bitmap && this._battlerSprite._mainSprite.bitmap.isReady()) {return true};
-           } else {
-               if (this._battlerSprite.bitmap && this._battlerSprite.bitmap.isReady()) {return true};
-           };
-        };
-    };
-    return false;
-};
-
-//==============================
-// * Refresh Battle Cursor
-//==============================
-BattleCursorSprite.prototype.refreshBattleCursor = function() {
-    this.visible = false;
-    this.refreshBattler();
-    if (this._battler) {
-        this.refreshData();
-        this.refreshBitmap();
-        this.refreshName();
-    };
-};
-
-//==============================
-// * Refresh Data
-//==============================
-BattleCursorSprite.prototype.refreshData = function() {
-     if (this._battler.isEnemy()) {
-         this._align = this.getAlign(String(Moghunter.bcursor_alignEnemy));      
-         this._position.xOffset = Moghunter.bcursor_x_enemy;
-         this._position.yOffset = Moghunter.bcursor_y_enemy;         
-     } else {
-         this._align = this.getAlign(String(Moghunter.bcursor_alignActor));
-         this._position.xOffset = Moghunter.bcursor_x_actor;
-         this._position.yOffset = Moghunter.bcursor_y_actor;         
-     };
-};
-
-//==============================
-// * refresh Bitmap
-//==============================
-BattleCursorSprite.prototype.refreshBitmap = function() {
-     this._cursorSprite.bitmap = this.setCursorBitmap();
-     this._position.width = 0;
-     this._position.height = 0;
-     if (this._align < 3) {
-        this._position.height = this.setCursorAlign(this._align); 
-     } else {
-        this._position.width = this.setCursorAlign(this._align);
-        this._position.height = this.setCursorAlign(1); 
-     };
-     if (this._anime.enabled) {this.prepareAnimation()};
-};
-
-//==============================
-// * setCursorAlign
-//==============================
-BattleCursorSprite.prototype.setCursorAlign = function(align) {
-     if (this._battlerSprite) {
-         if (this._battlerSprite._mainSprite && this._battlerSprite._mainSprite.bitmap && this._battlerSprite._mainSprite.bitmap.isReady()) {
-             if (align == 0) {
-                 return 0;
-             } else if (align == 1) {
-                 return (this._battlerSprite._mainSprite.height / 2) - 5;
-             } else if (align == 3) {
-                 return -(this._battlerSprite._mainSprite.width / 2) + 5;
-             } else if (align == 4) { 
-                 return (this._battlerSprite._mainSprite.width / 2) - 5;
-             } else {
-                 return this._battlerSprite._mainSprite.height - 12;
-             };           
-         };
-         if (this._battlerSprite.bitmap && this._battlerSprite.bitmap.isReady()) {
-             if (align == 0) {
-                 return 0;
-             } else if (align == 1) {
-                 return (this._battlerSprite.height / 2) - 10;
-             } else if (align == 3) {
-                 return -(this._battlerSprite.width / 2) + 10;
-             } else if (align == 4) {
-                 return (this._battlerSprite.width / 2) - 10;                
-             } else {
-                 return this._battlerSprite.height - 24;
-             };
-         };
-     };
-     return 0;
-};
-
-//==============================
-// * set Cursor Bitmap
-//==============================
-BattleCursorSprite.prototype.setCursorBitmap = function() {
-     if (this._battler.isEnemy()) {return this._cursorBitmap2};
-     return this._cursorBitmap1;
-};
-
-//==============================
-// * Refresh Name
-//==============================
-BattleCursorSprite.prototype.refreshName = function() {
-    const text = String(this._battler.name());
-    this._nameSprite.bitmap.clear();
-    this._nameSprite.bitmap.drawText(text,0,0,160,42,"center");
-    const sh = -(this._cursorSprite.height * 2) - 28;
-    const x_Offset = this._battler.isEnemy() ? 0 : 0;
-    const y_Offset = this._battler.isEnemy() ? 0 : 0;
-    this._nameSprite.x = x_Offset;
-    this._nameSprite.y = y_Offset + sh;
-};
-
-//==============================
-// * move Cursor
-//==============================
-BattleCursorSprite.prototype.moveCursor = function(value,real_value) {
-    if (value == real_value) {return value};
-    var dnspeed = (5 + (Math.abs(value - real_value) / 10)) * (this.moveSpeed() / 100);
-    if (value > real_value) {value -= dnspeed;
-        if (value < real_value) {value = real_value};}
-    else if (value < real_value) {value  += dnspeed;
-        if (value  > real_value) {value  = real_value};      
-    };
-    return Math.floor(value);
-};  
-
-//==============================
-// * posX
-//==============================
-BattleCursorSprite.prototype.posX = function() {
-   if (!this._battlerSprite) {return 0};
-   return this._xf + this._position.xOffset + this._battlerSprite.x + this._effect.waveX + this._battler._battleCursor.X_Offset + this._position.width;   
-};
-
-//==============================
-// * posY
-//==============================
-BattleCursorSprite.prototype.posY = function() {
-   if (!this._battlerSprite) {return 0};
-   return this._yf + this._position.yOffset + this._battlerSprite.y + this._effect.waveY + this._battler._battleCursor.Y_Offset - this._position.height; 
-};
-
-//==============================
-// * update Wave Effect
-//==============================
-BattleCursorSprite.prototype.updateWaveEffect = function() {
-    this._effect.waveTime++;
-    if (this._align < 3) {
-        this._effect.waveY = this.updateWaveMovement(this._effect.waveY);
-    } else {
-        this._effect.waveX = this.updateWaveMovement(this._effect.waveX);
-    };
-};
-
-//==============================
-// * updateWaveMovement
-//==============================
-BattleCursorSprite.prototype.updateWaveMovement = function(value) { 
-    if (this._effect.waveMode == 0) {
-        if (this._effect.waveTime > 2) {
-            this._effect.waveTime = 0
-            value++;
-            if (value >= 10) {this._effect.waveMode = 1 };
-        };
-    } else {
-        if (this._effect.waveTime > 2) {
-            this._effect.waveTime = 0
-            value--;
-            if (value <= 0) {this._effect.waveMode = 0};
-        };       
-    };
-    return value
-};
-
-//==============================
-// * isForAll
-//==============================
-BattleCursorSprite.prototype.isForAll = function() {
-   return $gameTemp._mogBattleCursor.isForAll;;
-};
-
-//==============================
-// * isVisible
-//==============================
-BattleCursorSprite.prototype.isVisible = function() {
-    if (!this._battler) {return false};
-    if (this._battler.isHidden()) {return false};
-    if (this._battler.isEnemy() && this._battler.isDead()) {return false};
-    return this._battler.isSelected();
-};
-
-//==============================
-// * Update Battle Cursor
-//==============================
-BattleCursorSprite.prototype.updateBattleCursor = function() {
-     this.visible = this.isVisible();
-     if (this._effect.wave) {this.updateWaveEffect()};
-     if (this._anime.enabled) {this.updateAnime()};
-     this.updatePosition();
-};
-
-//==============================
-// * Update Position
-//==============================
-BattleCursorSprite.prototype.updatePosition = function() {
-     if (this.visible) {
-         this.x = this.moveCursor(this.x,this.posX());
-         this.y = this.moveCursor(this.y,this.posY());
-         $gameTemp._mogBattleCursor.x = this.x;
-         $gameTemp._mogBattleCursor.y = this.y;
-         $gameTemp._mogBattleCursor.slideTime = 6;
-         this.opacity += 25;
-     } else {
-         this.x = $gameTemp._mogBattleCursor.x;
-         this.y = $gameTemp._mogBattleCursor.y;
-         this.opacity = $gameTemp._mogBattleCursor.slideTime == 0 ? 0 : 255;
-     };
- };
-
-//==============================
-// * need Create Sprites
-//==============================
-BattleCursorSprite.prototype.needCreateSprites = function() {
-   if (this._cursorSprite) {return false};
-   if (!this._cursorBitmap1.isReady()) {return false};
-   return true;
-};
-
-//==============================
-// * Update
-//==============================
-BattleCursorSprite.prototype.update = function() {
-    Sprite.prototype.update.call(this); 
-    if (this.needCreateSprites()) {this.createSprites()}
-    if (this.needRefresh()) {this.refreshBattleCursor()};
-    if (this._battler) {this.updateBattleCursor()};
-};
-
-//=============================================================================
-// ■■■  Window_BattleTargetName（右下角目标名称窗口） ■■■ 
-//=============================================================================
-function Window_BattleTargetName() {
-    this.initialize.apply(this, arguments);
-}
-Window_BattleTargetName.prototype = Object.create(Window_Base.prototype);
-Window_BattleTargetName.prototype.constructor = Window_BattleTargetName;
-
-//==============================
-// * 初始化窗口（使用配置参数）
-//==============================
-Window_BattleTargetName.prototype.initialize = function(rect) {
-    Window_Base.prototype.initialize.call(this, rect);
-    this._currentTarget = null; // 当前选中的目标
-    this.visible = false; // 默认隐藏
-    
-    // 应用窗口UI配置
-    this.opacity = Moghunter.windowOpacity; // 窗口透明度
-    this.backColor = Moghunter.windowBackColor; // 背景色
-    this.borderColor = Moghunter.windowBorderColor; // 边框色
-    this.borderWidth = Moghunter.windowBorderWidth; // 边框宽度
-    
-    // 应用文字样式配置
-    this.contents.fontSize = Moghunter.bcursor_fontSize || 18;
-    this.contents.fontBold = String(Moghunter.bcursor_fontBold) == "true" ? true : false;
-    this.contents.fontItalic = String(Moghunter.bcursor_fontItalic) == "true" ? true : false;
-    this.contents.textColor = Moghunter.textColor; // 文字颜色（配置参数）
-};
-
-//==============================
-// * 重写：绘制窗口背景（支持自定义颜色和边框）
-//==============================
-Window_BattleTargetName.prototype.drawBackground = function() {
-    const rect = this.baseRect();
-    // 绘制背景
-    this.contentsBack.bitmap.fillRect(rect, this.backColor);
-    // 绘制边框（如果边框宽度>0）
-    if (this.borderWidth > 0) {
-        this.contentsBack.bitmap.strokeRect(
-            rect.x, rect.y, 
-            rect.width, rect.height, 
-            this.borderColor, 
-            this.borderWidth
-        );
-    }
-};
-
-//==============================
-// * 更新窗口内容（名称）
-//   【修改】：支持传入字符串或对象
-//==============================
-Window_BattleTargetName.prototype.updateTarget = function(target) {
-    // 性能优化：如果目标没变（且不是强制刷新），就不重绘
-    if (this._lastTarget === target) return;
-    this._lastTarget = target;
-
-    this.contents.clear(); // 清空旧内容
-    
-    if (target) {
-        let text = "";
-        // 判断传入的是字符串（全体文本）还是战斗单位对象（单个目标）
-        if (typeof target === "string") {
-            text = target;
-        } else if (target.name) {
-            text = target.name();
-        }
-        
-        // 在窗口内居中显示目标名称
-        this.contents.drawText(text, 0, 0, this.contentsWidth(), this.lineHeight(), "center");
-        this.visible = true; // 显示窗口
-    } else {
-        this.visible = false; // 无目标时隐藏窗口
-    }
-};
-
-//==============================
-// * 帧更新：同步选择状态
-//==============================
-Window_BattleTargetName.prototype.update = function() {
-    Window_Base.prototype.update.call(this);
-    this.syncSelectedTarget();
-};
-
-//==============================
-// * 同步当前选中的目标
-//   【修改】：增加全体目标的判断逻辑
-//==============================
-Window_BattleTargetName.prototype.syncSelectedTarget = function() {
-    let targetData = null;
-    const isForAll = $gameTemp._mogBattleCursor.isForAll;         // 是否全体
-    const isForEveryone = $gameTemp._mogBattleCursor.isForEveryone; // 是否全场（敌我双方）
-
-    // 1. 敌人窗口激活时
-    if (SceneManager._scene._enemyWindow && SceneManager._scene._enemyWindow.active) {
-        if (isForAll || isForEveryone) {
-            // 如果是全体技能，直接使用配置的文本
-            targetData = Moghunter.textAllEnemies; 
-        } else {
-            // 否则显示选中的单个敌人
-            targetData = SceneManager._scene._enemyWindow.enemy();
-        }
-    }
-    // 2. 队友窗口激活时
-    else if (SceneManager._scene._actorWindow && SceneManager._scene._actorWindow.active) {
-        if (isForAll || isForEveryone) {
-            // 如果是全体技能，直接使用配置的文本
-            targetData = Moghunter.textAllAllies;
-        } else {
-            // 否则显示选中的单个队友
-            targetData = SceneManager._scene._actorWindow.actor();
-        }
-    }
-
-    // 3. 更新窗口内容
-    this.updateTarget(targetData);
-};
+    // 注册插件信息
+    var Imported = Imported || {};
+    Imported.MOG_BattleCursor = true;
+    var Moghunter = Moghunter || {}; 
+
+    Moghunter.parameters = PluginManager.parameters('MOG_BattleCursor'); // 注意文件名对应
+    
+    // --- 基础参数 ---
+    // 新增：禁用我方光标开关
+    Moghunter.bcursor_disableActor = String(Moghunter.parameters['Disable Actor Selection'] || "true");
+
+    Moghunter.bcursor_slide = String(Moghunter.parameters['Slide Effect'] || "true");
+    Moghunter.bcursor_moveSpeed  = Number(Moghunter.parameters['Move Speed'] || 100);
+    Moghunter.bcursor_alignActor = String(Moghunter.parameters['Align for Actor'] || "Center");
+    Moghunter.bcursor_alignEnemy = String(Moghunter.parameters['Align for Enemy'] || "Center");
+    Moghunter.bcursor_x_actor = 0; 
+    Moghunter.bcursor_y_actor = 0;
+    Moghunter.bcursor_x_enemy = 0;
+    Moghunter.bcursor_y_enemy = 0;
+    Moghunter.bcursor_float = "false"; 
+    
+    // --- 绘图参数 ---
+    Moghunter.pRadius = Number(Moghunter.parameters['Cursor Radius'] || 80);
+    Moghunter.pArrowSize = Number(Moghunter.parameters['Arrow Size'] || 24);
+    Moghunter.pColor = String(Moghunter.parameters['Arrow Color'] || '#FFFF00');
+    Moghunter.pPulseSpeed = Number(Moghunter.parameters['Pulse Speed'] || 4);
+    Moghunter.pPulseRange = Number(Moghunter.parameters['Pulse Range'] || 8);
+    Moghunter.pRefSize = 132; 
+
+    // --- 窗口参数 ---
+    Moghunter.bcursor_TargetWindow = String(Moghunter.parameters['Target Window'] || "false");
+    Moghunter.windowWidth = Number(Moghunter.parameters['Window Width'] || 200);
+    Moghunter.windowHeight = Number(Moghunter.parameters['Window Height'] || 60);
+    Moghunter.windowXOffset = Number(Moghunter.parameters['Window X Offset'] || 20);
+    Moghunter.windowYOffset = Number(Moghunter.parameters['Window Y Offset'] || 20);
+    Moghunter.textAllEnemies = String(Moghunter.parameters['Text All Enemies'] || "敌方全体");
+    Moghunter.textAllAllies = String(Moghunter.parameters['Text All Allies'] || "我方全体");
+
+    //=============================================================================
+    // ■■■ Game_Temp ■■■
+    //=============================================================================
+    const _mog_bCursor_game_temp_initialize = Game_Temp.prototype.initialize
+    Game_Temp.prototype.initialize = function() {
+        _mog_bCursor_game_temp_initialize.call(this);
+        this._mogBattleCursor = {};
+        this._mogBattleCursor.needRefresh1 = false;
+        this._mogBattleCursor.needRefresh2 = false;
+        this._mogBattleCursor.x = 0;
+        this._mogBattleCursor.y = 0;
+        this._mogBattleCursor.slideTime = 0;
+        this._mogBattleCursor.isForOpponent = false;
+        this._mogBattleCursor.isForAll = false;
+        this._mogBattleCursor.isForEveryone = false
+    };
+
+    //=============================================================================
+    // ■■■ Game_Party & Game_Troop Trigger ■■■
+    //=============================================================================
+    const _mog_bCursor_game_party_addActor = Game_Party.prototype.addActor;
+    Game_Party.prototype.addActor = function(actorId) {
+        _mog_bCursor_game_party_addActor.call(this,actorId);
+        if (this.inBattle()) {$gameTemp._mogBattleCursor.needRefresh1 = true};
+    };
+
+    const _mog_bCursor_game_party_removeActor = Game_Party.prototype.removeActor;
+    Game_Party.prototype.removeActor = function(actorId) {
+        _mog_bCursor_game_party_removeActor.call(this,actorId);
+        if (this.inBattle()) {$gameTemp._mogBattleCursor.needRefresh1 = true};
+    };
+
+    const _mog_battleCursor_game_enemy_transform = Game_Enemy.prototype.transform;
+    Game_Enemy.prototype.transform = function(enemyId) {
+        _mog_battleCursor_game_enemy_transform.call(this,enemyId);
+        $gameTemp._mogBattleCursor.needRefresh2 = true; 
+    };
+
+    const _mog_battleCursor_game_action_apply = Game_Action.prototype.apply;
+    Game_Action.prototype.apply = function(target) {
+        _mog_battleCursor_game_action_apply.call(this,target);
+        if (target && target.isEnemy() && target.isDead()) {$gameTemp._mogBattleCursor.needRefresh2 = true};
+    };
+
+    //=============================================================================
+    // ■■■ Window Logic Fixes ■■■
+    //=============================================================================
+    
+    // Window_BattleActor
+    const _mog_battleCursor_window_battleActor_initialize = Window_BattleActor.prototype.initialize;
+    Window_BattleActor.prototype.initialize = function(rect) {
+        _mog_battleCursor_window_battleActor_initialize.call(this,rect);
+        this._bcursor_winVisble = String(Moghunter.bcursor_TargetWindow) == "true" ? true : false;
+        this._bcSo = (Graphics.height * 2);
+    };
+
+    const _mog_battleCursor_window_battleactor_select = Window_BattleActor.prototype.select;
+    Window_BattleActor.prototype.select = function(index) {
+        _mog_battleCursor_window_battleactor_select.call(this,index);
+        if (this.battleCursorNeedSelectAllActors()) {
+            this.battleCursorSelectAllActors()};    
+    };
+
+    Window_BattleActor.prototype.battleCursorNeedSelectAllActors = function() {
+        if ($gameTemp._mogBattleCursor.isForEveryone) {return true};
+        if ($gameTemp._mogBattleCursor.isForOpponent) {return false};
+        if (!$gameTemp._mogBattleCursor.isForAll) {return false};
+        return true;
+    };
+
+    Window_BattleActor.prototype.battleCursorSelectAllActors = function() {
+        for (const member of $gameParty.battleMembers()) { member.select(); };
+        this.setCursorAll(true);
+    };
+
+    const _mog_battleCursor_window_battleactor_hide = Window_BattleActor.prototype.hide;
+    Window_BattleActor.prototype.hide = function(index) {
+        _mog_battleCursor_window_battleactor_hide.call(this);
+        this.setCursorAll(false);
+    };
+
+    // Window_BattleEnemy
+    const _mog_battleCursor_window_battleenemy_initialize = Window_BattleEnemy.prototype.initialize;
+    Window_BattleEnemy.prototype.initialize = function(rect) {
+        _mog_battleCursor_window_battleenemy_initialize.call(this,rect);
+        this._bcursor_winVisble = String(Moghunter.bcursor_TargetWindow) == "true" ? true : false;
+        this._bcSo = (Graphics.height * 2);
+    };
+
+    const _mog_battleCursor_window_battleenemy_select = Window_BattleEnemy.prototype.select
+    Window_BattleEnemy.prototype.select = function(index) {
+        _mog_battleCursor_window_battleenemy_select.call(this,index);
+        if (this.battleCursorNeedSelectAllEnemies()) {this.battleCursorSelectAllEnemies()};    
+    };
+
+    Window_BattleEnemy.prototype.battleCursorNeedSelectAllEnemies = function() {
+        if ($gameTemp._mogBattleCursor.isForEveryone) {return true};
+        if (!$gameTemp._mogBattleCursor.isForOpponent) {return false};
+        if (!$gameTemp._mogBattleCursor.isForAll) {return false};
+        return true;
+    };
+
+    Window_BattleEnemy.prototype.battleCursorSelectAllEnemies = function() {
+        for (const member of $gameTroop.aliveMembers()) { member.select(); };
+        this.setCursorAll(true);
+    };
+
+    const _mog_battleCursor_window_battleenemy_hide = Window_BattleEnemy.prototype.hide;
+    Window_BattleEnemy.prototype.hide = function() {
+        _mog_battleCursor_window_battleenemy_hide.call(this);
+        this.setCursorAll(false);
+    };
+
+    Window_BattleEnemy.prototype.itemRectBatteCursor = function(index) {
+        const maxCols = this.maxCols();
+        const itemWidth = this.itemWidth();
+        const itemHeight = this.itemHeight();
+        const colSpacing = this.colSpacing();
+        const rowSpacing = this.rowSpacing();
+        const col = index % maxCols;
+        const row = Math.floor(index / maxCols);
+        const x = itemWidth + colSpacing / 1 - this.scrollBaseX();
+        const y = row * itemHeight + rowSpacing / 1 - this.scrollBaseY();
+        const width = itemWidth - colSpacing;
+        const height = itemHeight - rowSpacing;
+        return new Rectangle(x, y, width, height);
+    };
+
+    Window_BattleEnemy.prototype.refreshCursorForAll = function() {
+        const maxItems = this.maxItems();
+        if (maxItems > 0) {
+            const rect = this.itemRect(0);
+            rect.enlarge(this.itemRectBatteCursor(999));
+            this.setCursorRect(rect.x, rect.y, rect.width, rect.height);
+        } else {
+            this.setCursorRect(0, 0, 0, 0);
+        };
+        this._index = 0;
+    };
+
+    // --- Input Fixes ---
+    Window_Selectable.prototype.inputIndex = function(value) {
+        var index = this.index();
+        var maxValue = this.maxItems() - 1;
+        index += value;
+        if (index > maxValue) {index = 0};
+        if (index < 0) {index = maxValue};
+        this.smoothSelect(index)
+    };
+
+    // Override cursor inputs to support wrapping and correct logic
+    const _mog_battleCursor_window_battleEnemy_cursorRight = Window_BattleEnemy.prototype.cursorRight;
+    Window_BattleEnemy.prototype.cursorRight = function(wrap) {
+        if (!this._bcursor_winVisble) {this.inputIndex(-1);return}; 
+        _mog_battleCursor_window_battleEnemy_cursorRight.call(this,wrap);
+    };
+
+    const _mog_battleCursor_window_battleEnemy_cursorLeft = Window_BattleEnemy.prototype.cursorLeft;
+    Window_BattleEnemy.prototype.cursorLeft = function(wrap) {
+        if (!this._bcursor_winVisble) {this.inputIndex(1);return};
+        _mog_battleCursor_window_battleEnemy_cursorLeft.call(this,wrap);
+    };
+
+    //=============================================================================
+    // ■■■ Scene_Battle Logic ■■■
+    //=============================================================================
+    
+    // 更新光标逻辑
+    const _mog_bCursor_scene_battle_update = Scene_Battle.prototype.update; 
+    Scene_Battle.prototype.update = function() {
+        _mog_bCursor_scene_battle_update.call(this);
+        this.updateBattleCursor();
+    };
+
+    Scene_Battle.prototype.updateBattleCursor = function() {
+        if ($gameTemp._mogBattleCursor.slideTime > 0) {
+            $gameTemp._mogBattleCursor.slideTime--;
+            if ($gameTemp._mogBattleCursor.slideTime == 0) {
+                $gameTemp._mogBattleCursor.x = 0;
+                $gameTemp._mogBattleCursor.y = 0;
+            };
+        };
+        this.updateBattleCursorTargetWindow();
+        
+        // 强制隐藏帮助窗口逻辑 (修复v2.0)
+        if (this._actorCommandWindow && this._actorCommandWindow.active) {
+            if (this._helpWindow && this._helpWindow.visible) {
+                this._helpWindow.hide();
+                this._helpWindow.visible = false;
+            }
+        }
+        
+        $gameTemp._mogBattleCursor.needRefresh1 = false;
+        $gameTemp._mogBattleCursor.needRefresh2 = false;    
+    };
+
+    Scene_Battle.prototype.updateBattleCursorTargetWindow= function() {
+        if ($gameTemp._mogBattleCursor.needRefresh1 && this._actorWindow.active) {
+            this._actorWindow.refresh();
+            // 注意：如果你不想每次打开队友选择都重置回第1个人，把下面这行也可以注释掉
+            this._actorWindow.select(0); 
+        };
+        if ($gameTemp._mogBattleCursor.needRefresh2 && this._enemyWindow.active) {
+            const enemy = this._enemyWindow.enemy();
+            this._enemyWindow.refresh();
+            if (!enemy.isDead()) {
+                var checked = false;
+                for (var i = 0; i < $gameTroop.aliveMembers().length; i++) {    
+                    if ($gameTroop.aliveMembers()[i] == enemy) {this._enemyWindow.select(i);checked = true};
+                };
+                if (!checked) {this._enemyWindow.select(0)};
+            } else {
+                this._enemyWindow.select(0);
+            };
+        };
+        if (this._enemyWindow && !this._enemyWindow._bcursor_winVisble) {this._enemyWindow.y = this._enemyWindow._bcSo};
+        
+        // ★★★ 修复：根据参数决定是否隐藏队友窗口 ★★★
+        if (String(Moghunter.bcursor_disableActor) !== "true") {
+            // 只有当“未禁用”MOG逻辑时，才强制隐藏窗口
+            if (this._actorWindow && !this._actorWindow._bcursor_winVisble) {this._actorWindow.y = this._actorWindow._bcSo};
+        }
+    };
+
+    // 动作选择时的逻辑
+    const _mog_bCursor_scene_battle_onSelectAction = Scene_Battle.prototype.onSelectAction;
+    Scene_Battle.prototype.onSelectAction = function() {
+        this.battleCursorOnSelectAction();
+        _mog_bCursor_scene_battle_onSelectAction.call(this);
+        if (this._enemyWindow.active && $gameTemp._mogBattleCursor.isForEveryone) {
+            this._actorWindow.battleCursorSelectAllActors();
+        }
+        
+        // 隐藏不必要的窗口
+        if (this._skillWindow) this._skillWindow.hide();
+        if (this._itemWindow) this._itemWindow.hide();
+        if (this._partyCommandWindow) this._partyCommandWindow.hide();
+        if (this._actorCommandWindow) this._actorCommandWindow.show(); 
+
+        // 帮助窗口控制
+        const action = BattleManager.inputtingAction();
+        if (this._helpWindow) {
+            if (action && (action.isAttack() || action.isGuard() || (action.isSkill() && action.item().id === 1))) {
+                this._helpWindow.hide();
+            } else {
+                this._helpWindow.show();
+            }
+        }
+    };
+
+    Scene_Battle.prototype.battleCursorOnSelectAction = function() {
+        const action = BattleManager.inputtingAction();
+        $gameTemp._mogBattleCursor.isForOpponent = action.isForOpponent();
+        $gameTemp._mogBattleCursor.isForAll = action.isForAll();
+        $gameTemp._mogBattleCursor.isForEveryone = action.isForEveryone();
+    };
+
+    // 强制窗口显示逻辑
+    const _mog_scene_battle_startPartyCommandSelection = Scene_Battle.prototype.startPartyCommandSelection;
+    Scene_Battle.prototype.startPartyCommandSelection = function() {
+        _mog_scene_battle_startPartyCommandSelection.call(this);
+        if (this._partyCommandWindow) this._partyCommandWindow.show();
+    };
+
+    const _mog_scene_battle_startActorCommandSelection = Scene_Battle.prototype.startActorCommandSelection;
+    Scene_Battle.prototype.startActorCommandSelection = function() {
+        _mog_scene_battle_startActorCommandSelection.call(this);
+        if (this._actorCommandWindow) this._actorCommandWindow.show();
+        if (this._partyCommandWindow) this._partyCommandWindow.hide();
+        if (this._helpWindow) this._helpWindow.hide();
+    };
+
+    // 取消选择时的恢复逻辑
+    const _mog_bCursor_scene_battle_onEnemyCancel = Scene_Battle.prototype.onEnemyCancel;
+    Scene_Battle.prototype.onEnemyCancel = function() {
+        this._actorWindow.hide();
+        _mog_bCursor_scene_battle_onEnemyCancel.call(this);
+        this.restoreWindowsAfterTargetCancel();
+    };
+
+    const _mog_bCursor_scene_battle_onActorCancel = Scene_Battle.prototype.onActorCancel;
+    Scene_Battle.prototype.onActorCancel = function() {
+        _mog_bCursor_scene_battle_onActorCancel.call(this);
+        this.restoreWindowsAfterTargetCancel();
+    };
+
+    Scene_Battle.prototype.restoreWindowsAfterTargetCancel = function() {
+        const action = BattleManager.inputtingAction();
+        if (!action) return;
+
+        if (action.isItem() && this._itemWindow) {
+            this._itemWindow.show();
+            if (this._helpWindow) this._helpWindow.show();
+        } else if (action.isSkill() && this._skillWindow) {
+            const attackSkillId = BattleManager.actor() ? BattleManager.actor().attackSkillId() : 1;
+            if (action.item().id === attackSkillId || action.item().id === 1) {
+                if (this._actorCommandWindow) {
+                    this._actorCommandWindow.show();
+                    this._actorCommandWindow.activate();
+                }
+                this._skillWindow.hide();
+                if (this._helpWindow) this._helpWindow.hide();
+            } else {
+                if (BattleManager.actor()) this._skillWindow.setActor(BattleManager.actor());
+                this._skillWindow.show();
+                if (this._helpWindow) this._helpWindow.show();
+            }
+        } else if (this._actorCommandWindow) {
+            this._actorCommandWindow.show();
+        }
+    };
+
+    //=============================================================================
+    // ■■■ Spriteset_Battle ■■■
+    //=============================================================================
+    
+    // 创建层级
+    Spriteset_Battle.prototype.createSprtField1 = function() {
+        this._sprtField1 = new Sprite();
+        this._sprtField1.z = 1;
+        this.addChild(this._sprtField1);
+    };
+
+    Spriteset_Battle.prototype.createSprtField2 = function() {
+        this._sprtField2 = new Sprite();
+        this._sprtField2.z = 5;
+        this.addChild(this._sprtField2);
+    };
+
+    const _mog_bCursor_spriteset_battle_createLowerLayer = Spriteset_Battle.prototype.createLowerLayer
+    Spriteset_Battle.prototype.createLowerLayer = function() {
+        _mog_bCursor_spriteset_battle_createLowerLayer.call(this);
+        if (!this._sprtField2) {this.createSprtField2()};
+        this.createBattleCursor();    
+        this.createBattleNameWindow();
+    };
+
+    Spriteset_Battle.prototype.createBattleCursor = function() {
+        for (const sprite of this.battlerSprites()) {
+            const battlerSprite = new BattleCursorSprite(this,sprite);
+            battlerSprite.z = 5;
+            this._sprtField2.addChild(battlerSprite);
+        };
+    };
+
+    Spriteset_Battle.prototype.createBattleNameWindow = function() {
+        const rect = new Rectangle(
+            Graphics.boxWidth - Moghunter.windowWidth - Moghunter.windowXOffset,
+            Graphics.boxHeight - Moghunter.windowHeight - Moghunter.windowYOffset,
+            Moghunter.windowWidth,
+            Moghunter.windowHeight
+        );
+        this._battleNameWindow = new Window_BattleTargetName(rect);
+        this._battleNameWindow.z = 100;
+        this.addChild(this._battleNameWindow);
+    };
+
+    //=============================================================================
+    // ■■■ BattleCursorSprite (重写核心) ■■■
+    //=============================================================================
+    function BattleCursorSprite() {
+        this.initialize.apply(this, arguments);
+    };
+
+    BattleCursorSprite.prototype = Object.create(Sprite.prototype);
+    BattleCursorSprite.prototype.constructor = BattleCursorSprite;
+
+    // --- 初始化 ---
+    BattleCursorSprite.prototype.initialize = function(spriteset, sprite) {
+        Sprite.prototype.initialize.call(this); 
+        this._spriteset = spriteset;
+        this._battlerSprite = sprite;
+        this._procAnimTime = 0; // 呼吸动画计时器
+        this._arrowSprites = []; // 存储4个箭头Sprite
+        
+        // 位置与状态
+        this._position = { x: 0, y: 0, xOffset: 0, yOffset: 0 };
+        this._moveSpeed = (String(Moghunter.bcursor_slide) === "true") ? Moghunter.bcursor_moveSpeed : 3000;
+        this._xf = ((Graphics.width - Graphics.boxWidth) / 2);
+        this._yf = ((Graphics.height - Graphics.boxHeight) / 2);    
+        
+        this.visible = false;
+        this.opacity = 0;
+        
+        this.refreshBattler();
+        this.createProceduralArrows(); // ★ 核心：创建绘制的箭头
+    };
+
+    // --- ★ 动态绘制逻辑 ---
+    BattleCursorSprite.prototype.createProceduralArrows = function() {
+        // 清理旧的
+        if (this._arrowSprites && this._arrowSprites.length > 0) {
+            this._arrowSprites.forEach(s => this.removeChild(s));
+        }
+        this._arrowSprites = [];
+        
+        // 1. 创建占位符位图 (用于对齐计算)
+        // 这是一个透明的框，MOG的逻辑会用它的大小来计算 "Center" 对齐
+        this.bitmap = new Bitmap(Moghunter.pRefSize, Moghunter.pRefSize);
+        this.anchor.x = 0.5;
+        this.anchor.y = 0.5;
+
+        // 2. 绘制箭头纹理 (复用同一个Bitmap以节省显存)
+        // 画一个向右指的三角形 (>)
+        const size = Moghunter.pArrowSize;
+        const arrowBitmap = new Bitmap(size, size);
+        const ctx = arrowBitmap.context;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(size, size / 2); // 顶点 (右)
+        ctx.lineTo(0, 0);           // 左上
+        ctx.lineTo(0, size);        // 左下
+        ctx.closePath();
+        
+        // 填充
+        ctx.fillStyle = Moghunter.pColor;
+        ctx.fill();
+        
+        // 描边 (黑色2px，增加复古清晰度)
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // 外发光 (可选)
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+        ctx.restore();
+        
+        arrowBitmap._baseTexture.update(); // 提交绘图
+
+        // 3. 创建四个方向的子 Sprite
+        // 索引: 0:上, 1:右, 2:下, 3:左
+        for (let i = 0; i < 4; i++) {
+            const sprite = new Sprite(arrowBitmap);
+            sprite.anchor.x = 0.5;
+            sprite.anchor.y = 0.5;
+            
+            let angle = 0;
+            if (i === 0) angle = 90;   // 上: 指向下
+            if (i === 1) angle = 180;  // 右: 指向左
+            if (i === 2) angle = 270;  // 下: 指向上
+            if (i === 3) angle = 0;    // 左: 指向右
+            
+            sprite.rotation = angle * (Math.PI / 180);
+            
+            this.addChild(sprite);
+            this._arrowSprites.push(sprite);
+        }
+    };
+
+    // --- ★ 呼吸动画逻辑 ---
+    BattleCursorSprite.prototype.updateProceduralAnimation = function() {
+        this._procAnimTime += Moghunter.pPulseSpeed;
+        
+        // 正弦波计算 (-1 到 1)
+        const wave = Math.sin(this._procAnimTime * 0.05); 
+        
+        // 动态半径 = 基础半径 + (波动 * 幅度)
+        const currentRadius = Moghunter.pRadius + (wave * Moghunter.pPulseRange);
+
+        // 更新四个箭头的位置 (相对于中心点)
+        const arrows = this._arrowSprites;
+        if (arrows.length === 4) {
+            // 0: 上 (y负)
+            arrows[0].y = -currentRadius;
+            // 1: 右 (x正)
+            arrows[1].x = currentRadius;
+            // 2: 下 (y正)
+            arrows[2].y = currentRadius;
+            // 3: 左 (x负)
+            arrows[3].x = -currentRadius;
+        }
+    };
+
+    // --- 数据刷新 ---
+    BattleCursorSprite.prototype.refreshBattler = function() {   
+        if (this._battlerSprite) {
+            this._battler = this._battlerSprite._battler;
+        } else {
+            this._battler = null;
+        }
+    };
+
+    BattleCursorSprite.prototype.needRefresh = function() {
+        if (this._battlerSprite) {
+            if ($gameTemp._mogBattleCursor.needRefresh1) return true;
+            if ($gameTemp._mogBattleCursor.needRefresh2) return true;
+            if (this._battler != this._battlerSprite._battler) return true;
+        }
+        return false;
+    };
+
+    BattleCursorSprite.prototype.refreshBattleCursor = function() {
+        this.visible = false;
+        this.refreshBattler();
+        if (this._battler) {
+            // 根据敌人/角色设置偏移，但我们在 procedural 模式下通常只需要中心对齐
+            if (this._battler.isEnemy()) {
+                this._position.xOffset = Moghunter.bcursor_x_enemy;
+                this._position.yOffset = Moghunter.bcursor_y_enemy;         
+            } else {
+                this._position.xOffset = Moghunter.bcursor_x_actor;
+                this._position.yOffset = Moghunter.bcursor_y_actor;         
+            }
+        }
+    };
+
+    // --- 坐标计算 ---
+    BattleCursorSprite.prototype.posX = function() {
+        if (!this._battlerSprite) return 0;
+        // 计算目标精灵的中心点
+        // MOG原版逻辑会去找 _mainSprite.width，但因为我们的 bitmap 是正方形占位符，
+        // Center 对齐逻辑 (align=1) 会自动处理得很好。
+        return this._xf + this._position.xOffset + this._battlerSprite.x;   
+    };
+
+    BattleCursorSprite.prototype.posY = function() {
+        if (!this._battlerSprite) return 0;
+        // 重点：我们要定位到敌人的身体中心，而不是脚底。
+        // _battlerSprite.y 通常是脚底。我们需要减去高度的一半。
+        // 为了简单通用，我们假设 enemies 的 anchor.y 是 1 (脚底)。
+        let centerY = this._battlerSprite.y;
+        
+        if (this._battlerSprite._mainSprite && this._battlerSprite._mainSprite.bitmap) {
+             // 尝试获取敌人图片高度的一半
+             const h = this._battlerSprite._mainSprite.height || this._battlerSprite.bitmap.height || 0;
+             centerY -= (h / 2);
+        } else if (this._battlerSprite.bitmap) {
+             centerY -= (this._battlerSprite.bitmap.height / 2);
+        }
+        
+        return this._yf + this._position.yOffset + centerY; 
+    };
+
+    // --- 移动逻辑 ---
+    BattleCursorSprite.prototype.moveCursor = function(value, real_value) {
+        if (value == real_value) return value;
+        var dnspeed = (5 + (Math.abs(value - real_value) / 10)) * (this._moveSpeed / 100);
+        if (value > real_value) {
+            value -= dnspeed;
+            if (value < real_value) value = real_value;
+        } else if (value < real_value) {
+            value += dnspeed;
+            if (value > real_value) value = real_value;      
+        }
+        return Math.floor(value);
+    };  
+
+    BattleCursorSprite.prototype.updatePosition = function() {
+        if (this.visible) {
+            // 平滑移动
+            this.x = this.moveCursor(this.x, this.posX());
+            this.y = this.moveCursor(this.y, this.posY());
+            
+            // 记录全局位置供渐变用
+            $gameTemp._mogBattleCursor.x = this.x;
+            $gameTemp._mogBattleCursor.y = this.y;
+            $gameTemp._mogBattleCursor.slideTime = 6;
+            
+            // 淡入
+            this.opacity += 25;
+        } else {
+            // 如果不可见，位置跟随全局记录，透明度处理
+            this.x = $gameTemp._mogBattleCursor.x;
+            this.y = $gameTemp._mogBattleCursor.y;
+            this.opacity = $gameTemp._mogBattleCursor.slideTime == 0 ? 0 : 255;
+        }
+    };
+
+    BattleCursorSprite.prototype.isVisible = function() {
+        if (!this._battler) return false;
+        
+        // ★★★ 修复：如果禁用了我方光标逻辑，且目标是Actor，则不显示箭头 ★★★
+        if (this._battler.isActor() && String(Moghunter.bcursor_disableActor) === "true") {
+            return false;
+        }
+        
+        if (this._battler.isHidden()) return false;
+        if (this._battler.isEnemy() && this._battler.isDead()) return false;
+        return this._battler.isSelected();
+    };
+
+    // --- 主更新 ---
+    BattleCursorSprite.prototype.update = function() {
+        Sprite.prototype.update.call(this); 
+        
+        if (this.needRefresh()) {
+            this.refreshBattleCursor();
+        }
+        
+        if (this._battler) {
+            this.visible = this.isVisible();
+            if (this.visible) {
+                this.updateProceduralAnimation(); // 播放呼吸动画
+            }
+            this.updatePosition(); // 移动位置
+        }
+    };
+
+    // 将类暴露给全局 (防止 ReferenceError)
+    window.BattleCursorSprite = BattleCursorSprite;
+    window.Sprite_BattleCursor = BattleCursorSprite;
+
+    //=============================================================================
+    // ■■■ Window_BattleTargetName (右下角名称窗口) ■■■
+    //=============================================================================
+    function Window_BattleTargetName() {
+        this.initialize.apply(this, arguments);
+    }
+    Window_BattleTargetName.prototype = Object.create(Window_Base.prototype);
+    Window_BattleTargetName.prototype.constructor = Window_BattleTargetName;
+
+    Window_BattleTargetName.prototype.initialize = function(rect) {
+        Window_Base.prototype.initialize.call(this, rect);
+        this._currentTarget = null;
+        this.visible = false;
+        this.opacity = 255;
+        this.contents.fontSize = 20;
+    };
+
+    Window_BattleTargetName.prototype.updateTarget = function(target) {
+        if (this._lastTarget === target) return;
+        this._lastTarget = target;
+        this.contents.clear();
+        
+        if (target) {
+            let text = "";
+            if (typeof target === "string") {
+                text = target;
+            } else if (target.name) {
+                text = target.name();
+            }
+            this.contents.drawText(text, 0, 0, this.contentsWidth(), this.lineHeight(), "center");
+            this.visible = true;
+        } else {
+            this.visible = false;
+        }
+    };
+
+    Window_BattleTargetName.prototype.update = function() {
+        Window_Base.prototype.update.call(this);
+        this.syncSelectedTarget();
+    };
+
+    Window_BattleTargetName.prototype.syncSelectedTarget = function() {
+        let targetData = null;
+        const isForAll = $gameTemp._mogBattleCursor.isForAll;
+        const isForEveryone = $gameTemp._mogBattleCursor.isForEveryone;
+
+        if (SceneManager._scene._enemyWindow && SceneManager._scene._enemyWindow.active) {
+            if (isForAll || isForEveryone) {
+                targetData = Moghunter.textAllEnemies; 
+            } else {
+                targetData = SceneManager._scene._enemyWindow.enemy();
+            }
+        } else if (SceneManager._scene._actorWindow && SceneManager._scene._actorWindow.active) {
+            // 如果 MOG 禁用了角色选择，这里其实也不用显示名称窗口了，因为原版窗口会有高亮
+            // 但保留它也无妨，或者你可以根据需求在这里加判断
+            if (isForAll || isForEveryone) {
+                targetData = Moghunter.textAllAllies;
+            } else {
+                targetData = SceneManager._scene._actorWindow.actor();
+            }
+        }
+        this.updateTarget(targetData);
+    };
 
 })();
-}
