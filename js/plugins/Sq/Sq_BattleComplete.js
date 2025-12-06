@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗综合核心] v3.7 紧急修复版 - 解决技能无法使用问题
+ * @plugindesc [战斗] 综合UI重构 & 彩虹专用日志 & 状态窗口强制锁定
  * @author 神枪手 (Merged by Gemini & Fixed)
  *
  * @help

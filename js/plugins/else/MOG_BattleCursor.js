@@ -1,152 +1,153 @@
 /*:
- * @target MZ
- * @plugindesc [v3.1] 战斗光标重制版 - 动态绘图与平滑移动 (彩虹城堡定制修复版)
- * @author Moghunter & RPG Maker MZ Plugin Master
- * @url https://mogplugins.wordpress.com
- * @orderAfter MOG_BattleCursor
- *
- * @param -> GENERAL
- * @text —— 基础设置 ——
- *
- * @param Disable Actor Selection
- * @parent -> GENERAL
- * @text 禁用我方角色光标逻辑
- * @desc true = 选择我方时使用系统原版窗口(解决与其他插件的冲突)。false = 使用MOG光标。
- * @type boolean
- * @default true
- *
- * @param Target Window
- * @parent -> GENERAL
- * @text 显示目标窗口
- * @desc 是否显示右下角的目标名称窗口。
- * @type boolean
- * @default false
- *
- * @param Slide Effect
- * @parent -> GENERAL
- * @text 幻灯片移动
- * @desc 光标在目标间切换时是否平滑滑动。
- * @type boolean
- * @default true
- *
- * @param Move Speed
- * @parent -> GENERAL
- * @text 移动速度
- * @desc 光标滑动的速度 (30%...300%)。
- * @default 100
- * @type number
- * @min 30
- * @max 300
- * * @param Align for Actor
- * @parent -> GENERAL
- * @text 对齐方式 (角色)
- * @desc 光标相对于角色的对齐位置。建议 Center。
- * @type select
- * @default Center
- * @option Center
- * @option Above
- * @option Below
- * @option Left
- * @option Right
- *
- * @param Align for Enemy
- * @parent -> GENERAL
- * @text 对齐方式 (敌人)
- * @desc 光标相对于敌人的对齐位置。建议 Center。
- * @type select
- * @default Center
- * @option Center
- * @option Above
- * @option Below
- * @option Left
- * @option Right
- *
- * @param -> PROCEDURAL
- * @text —— 绘图设置 ——
- *
- * @param Cursor Radius
- * @parent -> PROCEDURAL
- * @text 光标半径
- * @desc 箭头尖端距离中心的距离。针对132px敌人建议设为 80。
- * @type number
- * @default 80
- *
- * @param Arrow Size
- * @parent -> PROCEDURAL
- * @text 箭头大小
- * @desc 三角形箭头的尺寸（像素）。
- * @type number
- * @default 24
- *
- * @param Arrow Color
- * @parent -> PROCEDURAL
- * @text 箭头颜色
- * @desc Hex颜色代码。黄: #FFFF00, 红: #FF0000。
- * @type string
- * @default #FFFF00
- *
- * @param Pulse Speed
- * @parent -> PROCEDURAL
- * @text 呼吸速度
- * @desc 箭头缩放移动的速度。数值越大越快。
- * @type number
- * @default 4
- *
- * @param Pulse Range
- * @parent -> PROCEDURAL
- * @text 呼吸幅度
- * @desc 箭头浮动的像素距离。
- * @type number
- * @default 8
- *
- * @param -> NAME WINDOW
- * @text —— 名称窗口 ——
- *
- * @param Window Width
- * @parent -> NAME WINDOW
- * @text 窗口宽度
- * @default 200
- *
- * @param Window Height
- * @parent -> NAME WINDOW
- * @text 窗口高度
- * @default 60
- *
- * @param Window X Offset
- * @parent -> NAME WINDOW
- * @text X轴偏移
- * @desc 距离屏幕右边缘的距离。
- * @default 20
- *
- * @param Window Y Offset
- * @parent -> NAME WINDOW
- * @text Y轴偏移
- * @desc 距离屏幕下边缘的距离。
- * @default 20
- *
- * @param Text All Enemies
- * @parent -> NAME WINDOW
- * @text 全体敌人文本
- * @default 敌方全体
- *
- * @param Text All Allies
- * @parent -> NAME WINDOW
- * @text 全体队友文本
- * @default 我方全体
- *
- * @help  
- * =============================================================================
- * ■ MOG_BattleCursor_Redux (融合重制版 v3.1)
- * =============================================================================
- * 这是一个结合了 Moghunter 原版逻辑与 Canvas 动态绘图技术的定制插件。
- * 专为竖屏 JRPG《彩虹城堡》重制版设计。
- *
- * ★ v3.1 更新：
- * 增加了“禁用我方角色光标逻辑”参数。开启后，选择队友时将交还控制权给系统
- * 或其他UI插件（如Sq_BattleComplete），从而解决冲突导致的窗口定格问题。
- *
- * =============================================================================
- */
+ * @target MZ
+ * @plugindesc [战斗] 动态指向光标 & Canvas呼吸绘图 & 名称显示窗口
+ * @author Moghunter & RPG Maker MZ Plugin Master
+ * @url https://mogplugins.wordpress.com
+ * @orderAfter MOG_BattleCursor
+ *
+ * @param -> GENERAL
+ * @text —— 基础设置 ——
+ *
+ * @param Disable Actor Selection
+ * @parent -> GENERAL
+ * @text 禁用我方角色光标逻辑
+ * @desc true = 选择我方时使用系统原版窗口(解决与其他插件的冲突)。false = 使用MOG光标。
+ * @type boolean
+ * @default true
+ *
+ * @param Target Window
+ * @parent -> GENERAL
+ * @text 显示目标窗口
+ * @desc 是否显示右下角的目标名称窗口。
+ * @type boolean
+ * @default false
+ *
+ * @param Slide Effect
+ * @parent -> GENERAL
+ * @text 幻灯片移动
+ * @desc 光标在目标间切换时是否平滑滑动。
+ * @type boolean
+ * @default true
+ *
+ * @param Move Speed
+ * @parent -> GENERAL
+ * @text 移动速度
+ * @desc 光标滑动的速度 (30%...300%)。
+ * @default 100
+ * @type number
+ * @min 30
+ * @max 300
+ *
+ * @param Align for Actor
+ * @parent -> GENERAL
+ * @text 对齐方式 (角色)
+ * @desc 光标相对于角色的对齐位置。建议 Center。
+ * @type select
+ * @default Center
+ * @option Center
+ * @option Above
+ * @option Below
+ * @option Left
+ * @option Right
+ *
+ * @param Align for Enemy
+ * @parent -> GENERAL
+ * @text 对齐方式 (敌人)
+ * @desc 光标相对于敌人的对齐位置。建议 Center。
+ * @type select
+ * @default Center
+ * @option Center
+ * @option Above
+ * @option Below
+ * @option Left
+ * @option Right
+ *
+ * @param -> PROCEDURAL
+ * @text —— 绘图设置 ——
+ *
+ * @param Cursor Radius
+ * @parent -> PROCEDURAL
+ * @text 光标半径
+ * @desc 箭头尖端距离中心的距离。针对132px敌人建议设为 80。
+ * @type number
+ * @default 80
+ *
+ * @param Arrow Size
+ * @parent -> PROCEDURAL
+ * @text 箭头大小
+ * @desc 三角形箭头的尺寸（像素）。
+ * @type number
+ * @default 24
+ *
+ * @param Arrow Color
+ * @parent -> PROCEDURAL
+ * @text 箭头颜色
+ * @desc Hex颜色代码。黄: #FFFF00, 红: #FF0000。
+ * @type string
+ * @default #FFFF00
+ *
+ * @param Pulse Speed
+ * @parent -> PROCEDURAL
+ * @text 呼吸速度
+ * @desc 箭头缩放移动的速度。数值越大越快。
+ * @type number
+ * @default 4
+ *
+ * @param Pulse Range
+ * @parent -> PROCEDURAL
+ * @text 呼吸幅度
+ * @desc 箭头浮动的像素距离。
+ * @type number
+ * @default 8
+ *
+ * @param -> NAME WINDOW
+ * @text —— 名称窗口 ——
+ *
+ * @param Window Width
+ * @parent -> NAME WINDOW
+ * @text 窗口宽度
+ * @default 200
+ *
+ * @param Window Height
+ * @parent -> NAME WINDOW
+ * @text 窗口高度
+ * @default 60
+ *
+ * @param Window X Offset
+ * @parent -> NAME WINDOW
+ * @text X轴偏移
+ * @desc 距离屏幕右边缘的距离。
+ * @default 20
+ *
+ * @param Window Y Offset
+ * @parent -> NAME WINDOW
+ * @text Y轴偏移
+ * @desc 距离屏幕下边缘的距离。
+ * @default 20
+ *
+ * @param Text All Enemies
+ * @parent -> NAME WINDOW
+ * @text 全体敌人文本
+ * @default 敌方全体
+ *
+ * @param Text All Allies
+ * @parent -> NAME WINDOW
+ * @text 全体队友文本
+ * @default 我方全体
+ *
+ * @help  
+ * =============================================================================
+ * ■ MOG_BattleCursor_Redux (融合重制版 v3.1)
+ * =============================================================================
+ * 这是一个结合了 Moghunter 原版逻辑与 Canvas 动态绘图技术的定制插件。
+ * 专为竖屏 JRPG《彩虹城堡》重制版设计。
+ *
+ * ★ v3.1 更新：
+ * 增加了“禁用我方角色光标逻辑”参数。开启后，选择队友时将交还控制权给系统
+ * 或其他UI插件（如Sq_BattleComplete），从而解决冲突导致的窗口定格问题。
+ *
+ * =============================================================================
+ */
 
 (() => {
     // 注册插件信息

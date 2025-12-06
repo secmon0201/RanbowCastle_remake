@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 480x720分辨率适配 & 菜单全屏背景 & 计量槽重绘
+ * @plugindesc [系统] 480x854分辨率适配 & 菜单全屏背景 & 计量槽重绘
  * @author 神枪手
  *
  * @help
