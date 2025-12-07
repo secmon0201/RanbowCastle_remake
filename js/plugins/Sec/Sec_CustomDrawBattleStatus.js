@@ -2,7 +2,7 @@
  * @target MZ
  * @plugindesc [战斗] 自适应状态栏 & 独立图标图层 & 自定义窗口布局
  * @author Secmon (Modified for SuperFrontViewMZ TP Control & Position)
- * @version 1.7.1 (Crash Fix)
+ * @version 2.3 (Minimal Buffer Patch)
  *
  * @param NameFontSize
  * @text 名字字体大小
@@ -147,35 +147,36 @@
  * @type number
  * @default 0
  *
+ * @param ---Buffer Visuals---
+ * @text [缓冲条颜色]
+ * @default
+ * @param BufferColorDamage
+ * @text 扣血缓冲色
+ * @parent ---Buffer Visuals---
+ * @desc 扣血/蓝时残留的缓冲条颜色(支持Hex或rgba)
+ * @default #FFFFFF
+ * @param BufferColorHeal
+ * @text 回血高亮色
+ * @parent ---Buffer Visuals---
+ * @desc 回血/蓝时预显示的底色(支持Hex或rgba)
+ * @default #FFD700
+ *
  * @help
  * ============================================================================
- * 崩溃修复 (1.7.1)
+ * Sec_CustomDrawBattleStatus.js (v2.3 极简缓冲版)
  * ============================================================================
- * 1. 【紧急修复】修复了在没有战斗背景或初始化过快时可能导致的
- * "Cannot read property '0' of undefined" 报错。
- * 加入了多重安全检查，确保插件稳定运行。
- *
- * ============================================================================
- * 图标位置修复 (1.7.0)
- * ============================================================================
- * 1. 【新增参数】StateIconOffsetX 和 StateIconOffsetY。
- * 现在你可以精确控制状态图标（红心/中毒等图标）的位置了。
- * 如果你想让图标往下移，增大 StateIconOffsetY 的数值即可。
- *
- * ============================================================================
- * 位置调整更新 (1.6.0)
- * ============================================================================
- * 1. 【新增功能】现在可以在插件参数中自定义战斗状态窗口的 X, Y, 宽, 高。
- * 请先将 "启用窗口位置自定义" 设置为 true。
+ * 这是一个基于 v1.7.1 的极简修改版。
+ * 1. 它完全保留了原版的所有窗口位置、头像绘制和图标逻辑。
+ * 2. 仅仅修改了 HP 和 MP 进度条的绘制方式，增加了“缓冲/渐变”效果。
  *
  * ============================================================================
  */
 
 (() => {
-    // 读取当前文件名对应的参数
+    // 读取参数
     const parameters = PluginManager.parameters('Sec_CustomDrawBattleStatus');
     
-    // 原有参数
+    // 原有参数 (完全保持不变)
     const nameFontSize = Number(parameters['NameFontSize'] || 26);
     const namePadding = Number(parameters['NamePadding'] || 6);
     const nameExtraOffsetY = Number(parameters['NameExtraOffsetY'] || 11);
@@ -194,27 +195,80 @@
     const ICON_SIZE = 10;
     const ROW_SPACING = 10;
 
-    // 状态图标参数
     const STATE_ICON_SIZE = Number(parameters['StateIconSize'] || 24);
     const STATE_MAX_COUNT = Number(parameters['StateMaxCount'] || 4);
     const STATE_SPACING = Number(parameters['StateSpacing'] || 5);
-    // 新增：图标偏移参数
     const STATE_ICON_OFFSET_X = Number(parameters['StateIconOffsetX'] || 0);
     const STATE_ICON_OFFSET_Y = Number(parameters['StateIconOffsetY'] || 0);
 
-    // 窗口位置参数
     const ENABLE_CUSTOM_WINDOW = parameters['EnableCustomWindow'] === "true";
     const CUSTOM_WIN_X = Number(parameters['WindowX'] || 0);
     const CUSTOM_WIN_Y = Number(parameters['WindowY'] || 0);
     const CUSTOM_WIN_W = Number(parameters['WindowWidth'] || 0);
     const CUSTOM_WIN_H = Number(parameters['WindowHeight'] || 0);
 
+    // [新增] 缓冲条颜色
+    const BUFFER_COLOR_DAMAGE = parameters['BufferColorDamage'] || "#FFFFFF";
+    const BUFFER_COLOR_HEAL = parameters['BufferColorHeal'] || "#FFD700";
+
     const hpIconBitmap = ImageManager.loadBitmap("img/rainbow/", "hpicon");
     const mpIconBitmap = ImageManager.loadBitmap("img/rainbow/", "mpicon");
     const tpIconBitmap = ImageManager.loadBitmap("img/rainbow/", "tpicon");
 
     // ========================================================================
-    //  Scene_Battle 扩展：自定义窗口矩形
+    //  1. Game_Battler 扩展：缓冲值逻辑 (新增)
+    // ========================================================================
+    
+    const _Game_Battler_initMembers = Game_Battler.prototype.initMembers;
+    Game_Battler.prototype.initMembers = function() {
+        _Game_Battler_initMembers.call(this);
+        this._hpBuffer = 0;
+        this._mpBuffer = 0;
+        this._gaugeBufferInitialized = false;
+    };
+
+    Game_Battler.prototype.checkGaugeBufferInit = function() {
+        // 确保初次渲染时缓冲值与真实值一致
+        if (!this._gaugeBufferInitialized) {
+            this._hpBuffer = this.hp;
+            this._mpBuffer = this.mp;
+            this._gaugeBufferInitialized = true;
+        }
+    };
+
+    // 核心更新逻辑：每帧调用
+    Game_Battler.prototype.updateGaugeBuffers = function() {
+        this.checkGaugeBufferInit();
+        this._hpBuffer = this.updateSingleBuffer(this._hpBuffer, this.hp, this.mhp);
+        this._mpBuffer = this.updateSingleBuffer(this._mpBuffer, this.mp, this.mmp);
+    };
+
+    Game_Battler.prototype.updateSingleBuffer = function(bufferVal, realVal, maxVal) {
+        if (bufferVal === realVal) return bufferVal;
+
+        const diff = Math.abs(bufferVal - realVal);
+        // 动态速度：距离越远跑得越快
+        let speed = Math.max(diff / 10, maxVal / 120, 1);
+        
+        if (bufferVal > realVal) {
+            return Math.max(bufferVal - speed, realVal);
+        } else {
+            return Math.min(bufferVal + speed, realVal);
+        }
+    };
+
+    // 获取用于绘制的比率 (带初始化检查)
+    Game_Battler.prototype.hpBufferRate = function() {
+        this.checkGaugeBufferInit();
+        return this.mhp > 0 ? this._hpBuffer / this.mhp : 0;
+    };
+    Game_Battler.prototype.mpBufferRate = function() {
+        this.checkGaugeBufferInit();
+        return this.mmp > 0 ? this._mpBuffer / this.mmp : 0;
+    };
+
+    // ========================================================================
+    //  Scene_Battle 扩展：自定义窗口矩形 (保持原样)
     // ========================================================================
     const _Scene_Battle_statusWindowRect = Scene_Battle.prototype.statusWindowRect;
     Scene_Battle.prototype.statusWindowRect = function() {
@@ -231,7 +285,7 @@
     };
 
     // ========================================================================
-    //  Window_BattleStatus 逻辑
+    //  Window_BattleStatus 逻辑 (保持原样，仅注入绘制函数)
     // ========================================================================
 
     const _Window_BattleStatus_initialize = Window_BattleStatus.prototype.initialize;
@@ -245,49 +299,29 @@
         this.contents.blt(bitmap, 0, 0, bitmap.width, bitmap.height, x, y, size, size);
     };
 
-    // 【修改点】更新独立的图标Sprite（加入防崩溃逻辑）
+    // 保持原样
     Window_BattleStatus.prototype.updateActorStateSprite = function(index, actor, x, y, faceSize) {
-        // -----------------------------------------------------------------
-        // 1. 安全初始化：如果容器数组都没建好，立刻创建一个
-        // -----------------------------------------------------------------
-        if (!this._stateIconSprites) {
-            this._stateIconSprites = [];
-        }
-
-        // -----------------------------------------------------------------
-        // 2. 安全创建：如果对应位置没有 Sprite，新建一个并加入显示列表
-        // -----------------------------------------------------------------
+        if (!this._stateIconSprites) this._stateIconSprites = [];
         if (!this._stateIconSprites[index]) {
             const newSprite = new Sprite();
-            // 确保 addChild 存在（极少数情况下可能会报错，虽然几率很小）
-            if (this.addChild) {
-                this.addChild(newSprite);
-            }
+            if (this.addChild) this.addChild(newSprite);
             this._stateIconSprites[index] = newSprite;
         }
 
         const sprite = this._stateIconSprites[index];
-        
-        // -----------------------------------------------------------------
-        // 3. 终极防线：如果 sprite 依然是空的，绝对不能往下执行
-        //    （这里就是解决 "read property '0' of undefined" 的关键）
-        // -----------------------------------------------------------------
-        if (!sprite) return;
+        if (!sprite) return; // 终极防线
 
-        // 正常逻辑：如果没有角色，隐藏图标并退出
         if (!actor) {
             sprite.visible = false;
             return;
         }
 
-        // --- 以下为原有绘制逻辑，保持不变 ---
         const states = actor.states().filter(state => state.iconIndex > 0);
         const displayCount = Math.min(states.length, STATE_MAX_COUNT);
         
         const totalWidth = STATE_MAX_COUNT * (STATE_ICON_SIZE + STATE_SPACING);
         const totalHeight = STATE_ICON_SIZE;
 
-        // 确保 bitmap 存在
         if (!sprite.bitmap || sprite.bitmap.width < totalWidth) {
             sprite.bitmap = new Bitmap(totalWidth, totalHeight);
         }
@@ -306,8 +340,6 @@
         }
 
         const stateRealWidth = displayCount * (STATE_ICON_SIZE + STATE_SPACING) - STATE_SPACING;
-        
-        // 计算坐标
         const targetX = x + faceSize - stateRealWidth + STATE_ICON_OFFSET_X;
         const targetY = y + STATE_ICON_OFFSET_Y;
 
@@ -317,9 +349,9 @@
         sprite.z = 10; 
     };
 
+    // 保持原样
     Window_BattleStatus.prototype.drawItem = function(index) {
         const actor = $gameParty.members()[index];
-        // 如果角色不存在，尝试隐藏图标（前提是图标已创建）
         if (!actor) {
             if (this._stateIconSprites && this._stateIconSprites[index]) {
                 this._stateIconSprites[index].visible = false;
@@ -332,7 +364,6 @@
         let y = rect.y;
         const width = rect.width;
         
-        // 1. 应用头像缩放
         const rawFaceSize = width;
         const faceSize = Math.floor(rawFaceSize * FACE_SCALE);
         const offsetX = Math.floor((rawFaceSize - faceSize) / 2);
@@ -342,11 +373,10 @@
         const valueFontSize = Math.max(15, Math.floor(ICON_SIZE * 1.2));
         const valueHeight = valueFontSize + 4;
 
-        // 2. SuperFrontViewMZ 动态同步
         let isSuperFVActive = false;
         if (this._additionalSprites && this._additionalSprites["sv_actor%1".format(index)]) {
             const sprite = this._additionalSprites["sv_actor%1".format(index)];
-            sprite.updateFrame = function() {}; // 禁止自动裁剪
+            sprite.updateFrame = function() {}; 
 
             const pw = ImageManager.faceWidth || 144;
             const ph = ImageManager.faceHeight || 144;
@@ -373,10 +403,8 @@
             this.drawActorFace(actor, finalX, finalY, faceSize, faceSize);
         }
 
-        // 3. 绘制独立图层状态图标 (传入位置供计算)
         this.updateActorStateSprite(index, actor, finalX, finalY, faceSize);
 
-        // 4. 绘制名字
         const nameX = x + namePadding;
         const nameY = finalY + faceSize - this.lineHeight() - namePadding + nameExtraOffsetY;
 
@@ -392,13 +420,28 @@
         this.drawText(actor.name(), nameX, nameY, width, "left");
         this.contents.fontSize = originalFontSize;
 
-        // 绘制条形图
         const faceBottom = finalY + faceSize;
         const nameBottom = nameY + this.lineHeight();
         let contentBottomY = Math.max(faceBottom, nameBottom) + 4;
 
-        const drawStatusRow = (iconBitmap, valueText, rate, gaugeColor) => {
-            this.drawColoredGauge(x, contentBottomY, width, rate, gaugeColor);
+        // 【修改】在这里调用缓冲条绘制逻辑
+        this.drawCustomGauges(actor, x, contentBottomY, width, valueFontSize, valueHeight);
+    };
+
+    // 将 drawCustomGauges 独立出来并修改，以便使用 drawBufferedGauge
+    Window_BattleStatus.prototype.drawCustomGauges = function(actor, x, startY, width, valueFontSize, valueHeight) {
+        let contentBottomY = startY;
+
+        // 通用绘制行函数
+        const drawStatusRow = (iconBitmap, valueText, rateReal, rateBuffer, gaugeColor, useBuffer) => {
+            if (useBuffer) {
+                // HP/MP 使用缓冲绘制
+                this.drawBufferedGauge(x, contentBottomY, width, rateReal, rateBuffer, gaugeColor);
+            } else {
+                // TP 使用普通绘制 (保持原样)
+                this.drawColoredGauge(x, contentBottomY, width, rateReal, gaugeColor);
+            }
+
             const iconY = contentBottomY - ICON_SIZE;
             this.drawCustomIcon(iconBitmap, x, iconY, ICON_SIZE);
             
@@ -412,16 +455,17 @@
             contentBottomY += gaugeHeight + ROW_SPACING;
         };
 
-        // HP 和 MP 总是绘制
-        drawStatusRow(hpIconBitmap, `${actor.hp}/${actor.mhp}`, actor.hpRate(), HP_GAUGE_COLOR);
-        drawStatusRow(mpIconBitmap, `${actor.mp}/${actor.mmp}`, actor.mpRate(), MP_GAUGE_COLOR);
+        // HP 和 MP 使用缓冲逻辑 (true)
+        drawStatusRow(hpIconBitmap, `${actor.hp}/${actor.mhp}`, actor.hpRate(), actor.hpBufferRate(), HP_GAUGE_COLOR, true);
+        drawStatusRow(mpIconBitmap, `${actor.mp}/${actor.mmp}`, actor.mpRate(), actor.mpBufferRate(), MP_GAUGE_COLOR, true);
         
-        // TP 根据参数控制绘制
+        // TP 保持原样 (false)
         if (SHOW_TP_GAUGE) {
-            drawStatusRow(tpIconBitmap, `${actor.tp}/${actor.maxTp()}`, actor.tpRate(), TP_GAUGE_COLOR);
+            drawStatusRow(tpIconBitmap, `${actor.tp}/${actor.maxTp()}`, actor.tpRate(), 0, TP_GAUGE_COLOR, false);
         }
     };
 
+    // 原有的普通绘制函数 (TP使用)
     Window_BattleStatus.prototype.drawColoredGauge = function(x, y, width, rate, color) {
         const height = gaugeHeight;
         const padding = gaugePadding;
@@ -434,9 +478,53 @@
         }
     };
 
+    // [新增] 缓冲条绘制函数
+    Window_BattleStatus.prototype.drawBufferedGauge = function(x, y, width, rateReal, rateBuffer, color) {
+        const height = gaugeHeight;
+        const padding = gaugePadding;
+        const fillMaxW = width - padding * 2;
+        const fillH = height - padding * 2;
+        const fillX = x + padding;
+        const fillY = y + padding;
+
+        // 槽底
+        this.contents.fillRect(x + padding, y + padding, fillMaxW, fillH, ColorManager.gaugeBackColor());
+
+        const wReal = Math.floor(fillMaxW * Math.max(0, Math.min(1, rateReal)));
+        const wBuffer = Math.floor(fillMaxW * Math.max(0, Math.min(1, rateBuffer)));
+
+        if (rateReal < rateBuffer) {
+            // === 扣血状态 ===
+            // 底层：白色的缓冲条 (旧血量)
+            this.contents.fillRect(fillX, fillY, wBuffer, fillH, BUFFER_COLOR_DAMAGE);
+            // 顶层：真实的彩条 (新血量)
+            this.contents.fillRect(fillX, fillY, wReal, fillH, color);
+        } else {
+            // === 回血状态 ===
+            // 底层：金色的高亮条 (目标血量)
+            this.contents.fillRect(fillX, fillY, wReal, fillH, BUFFER_COLOR_HEAL);
+            // 顶层：真实的彩条 (当前动画进度)
+            this.contents.fillRect(fillX, fillY, wBuffer, fillH, color);
+        }
+    };
+
+    // [修改] Update 逻辑：加入缓冲计算
     const _Window_BattleStatus_update = Window_BattleStatus.prototype.update;
     Window_BattleStatus.prototype.update = function() {
         _Window_BattleStatus_update.call(this);
+        
+        // 计算缓冲值
+        if ($gameParty) {
+            for (const actor of $gameParty.battleMembers()) {
+                if (actor) {
+                    actor.updateGaugeBuffers();
+                }
+            }
+        }
+        
+        // 原插件逻辑：每帧强制刷新。
+        // 为了保持你原有的动态效果（如 SuperFrontViewMZ 位置更新），这里必须保留。
+        // 同时这也天然支持了我们的缓冲条动画。
         if (SceneManager._scene instanceof Scene_Battle) {
             this.refresh();
         }

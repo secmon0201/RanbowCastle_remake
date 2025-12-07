@@ -2,7 +2,7 @@
  * @target MZ
  * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
  * @author Secmon (Refactored by Gemini)
- * @version 4.5
+ * @version 4.8
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -25,6 +25,13 @@
  * @text 默认Buff动画ID
  * @type animation
  * @default 52
+ *
+ * @param ReactionHitDelay
+ * @parent ---Default Animations---
+ * @text 协战/识破打击延迟
+ * @desc (快节奏) 技能动画播放多少帧后立即弹出伤害并进行下一回合？(推荐 12-20)
+ * @type number
+ * @default 12
  *
  * @param ---Time Settings---
  * @text [时间轴参数设置]
@@ -217,6 +224,25 @@
  * @dir audio/se/
  * @default Item3
  *
+ * @param ---Visual StateCycle---
+ * @text [表现-状态循环]
+ * @default
+ * @param StateCycleColor
+ * @parent ---Visual StateCycle---
+ * @text 文本颜色
+ * @default #FF88FF
+ * @param StateCycleWait
+ * @parent ---Visual StateCycle---
+ * @text 停留帧数
+ * @type number
+ * @default 60
+ * @param StateCycleSE
+ * @parent ---Visual StateCycle---
+ * @text 音效
+ * @type file
+ * @dir audio/se/
+ * @default Ice1
+ *
  * @param ---Visual Exec---
  * @text [表现-斩杀]
  * @default
@@ -307,13 +333,12 @@
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v4.5 (回合逻辑修正版) ★
+ * ★ 插件功能手册 v4.8 (状态循环动态版) ★
  * ============================================================================
- * 【更新日志 v4.5】
- * 1. [Fix] 修复了协战/识破会导致角色本身的回合被跳过的问题。
- * - 现在协战行动被视为“额外插入”，不会触发 TPB 进度条清空。
- * - 如果角色原本处于“准备就绪”状态（满条），协战后会保持满条状态，
- * 并重新加入行动队列，确保其原本的回合正常进行。
+ * 【更新日志 v4.8】
+ * 1. [新增] 状态循环 (State Cycle) 的专属视觉表现。
+ * - 动态文本：当状态循环触发时，弹出的文字是【新生成状态的名称】。
+ * - 专属动画：使用 [Rise] 升腾动画，文字会向上飘升并变大，体现升级感。
  *
  * ============================================================================
  */
@@ -336,6 +361,8 @@
         ricochetBase: Number(parameters['RicochetBaseDelay'] || 200),
         ricochetDecay: Number(parameters['RicochetDecay'] || 30),
         
+        hitDelay: Number(parameters['ReactionHitDelay'] || 12), // 快节奏延迟
+
         // 全局设置
         fontSize: Number(parameters['PopupFontSize'] || 25),
 
@@ -389,6 +416,13 @@
                 wait: Number(parameters['StateWait'] || 60),
                 se: parameters['StateSE'],
                 style: 'pulse'
+            },
+            stateCycle: {
+                text: "", // 动态获取
+                color: String(parameters['StateCycleColor'] || "#FF88FF"),
+                wait: Number(parameters['StateCycleWait'] || 60),
+                se: parameters['StateCycleSE'],
+                style: 'rise'
             },
             exec: {
                 text: String(parameters['ExecText'] || "斩杀"),
@@ -596,9 +630,31 @@
         if (target && target.result().isHit()) { 
             const targetNote = _Sec_GetBattlerNotes(target);
 
-            // B1/B2 (略)
+            // B1. 受击特效
+            if (targetNote) {
+                const matches = targetNote.matchAll(/<战斗触发[:：]\s*Hit\s*[,，]\s*([^>]+)>/gi);
+                for (const match of matches) {
+                    try {
+                        const formula = match[1].trim();
+                        const a = target, b = subject, v = $gameVariables._data;
+                        _Sec_SuppressLog(a); _Sec_SuppressLog(b);
+                        eval(formula);
+                    } catch (e) {}
+                }
+            }
 
-            // B3. 守护光环 (略)
+            // B2. 受击蓄力
+            if (actualDamage > 0 && targetNote) {
+                const chargeMatches = targetNote.matchAll(/<受击蓄力[:：]\s*(\d+)\s*>/gi);
+                for (const match of chargeMatches) {
+                    const stateId = parseInt(match[1]);
+                    if (target.isStateAffected(stateId)) {
+                        target._secStoredDmg = (target._secStoredDmg || 0) + actualDamage;
+                    }
+                }
+            }
+
+            // B3. 守护光环
             if (actualDamage > 0) {
                 const friends = target.friendsUnit().members();
                 for (const guardian of friends) {
@@ -929,7 +985,41 @@
             }
         }
         
-        // --- C6. 状态循环 (略) ---
+        // --- C6. 状态循环 (恢复 + 动态文本) ---
+        const stateCycleMatch = note.match(/<状态循环[:：]\s*([^>]+)\s*>/);
+        if (stateCycleMatch) {
+            const stateIds = stateCycleMatch[1].split(/[,，]/).map(id => parseInt(id.trim()));
+            if (stateIds.length >= 2) {
+                let currentIndex = stateIds.findIndex(id => target.isStateAffected(id));
+                let addedStateId = 0;
+
+                if (currentIndex === -1) {
+                    addedStateId = stateIds[0];
+                    target.addState(addedStateId);
+                } else if (currentIndex < stateIds.length - 1) {
+                    target.removeState(stateIds[currentIndex]);
+                    addedStateId = stateIds[currentIndex + 1];
+                    target.addState(addedStateId);
+                }
+
+                // 触发视觉特效 (动态文本)
+                if (addedStateId > 0) {
+                    const stateData = $dataStates[addedStateId];
+                    if (stateData) {
+                        const baseConfig = Sec_Params.visual.stateCycle;
+                        // 动态克隆配置并覆盖文本
+                        const dynamicConfig = {
+                            text: stateData.name, // 使用状态名
+                            color: baseConfig.color,
+                            wait: baseConfig.wait,
+                            se: baseConfig.se,
+                            style: baseConfig.style
+                        };
+                        target.startCustomPopupConfig(dynamicConfig);
+                    }
+                }
+            }
+        }
     };
 
     // ======================================================================
@@ -1030,11 +1120,15 @@
             const type = match[1].trim().toLowerCase();
             const chance = parseInt(match[2]);
             const skillId = parseInt(match[3]);
+            
             let matchType = false;
-            if (type === 'any' && !action.isGuard()) matchType = true;
-            else if (type === 'attack' && action.isAttack() && !action.isGuard()) matchType = true;
-            else if (type === 'skill' && action.isSkill() && !action.isAttack() && !action.isGuard()) matchType = true;
-            else if (type === 'support' && (action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            if (type === 'any') {
+                matchType = true;
+            } else if (type === 'attack') {
+                if (action.isForOpponent() && !action.isGuard()) matchType = true;
+            } else if (type === 'support') {
+                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            }
 
             if (matchType && Math.random() * 100 < chance) {
                 let targetIndex = -2;
@@ -1060,10 +1154,15 @@
             const type = match[1].trim().toLowerCase();
             const chance = parseInt(match[2]);
             const skillId = parseInt(match[3]);
+            
             let matchType = false;
-            if (type === 'any' && !action.isGuard()) matchType = true;
-            else if (type === 'support' && (action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
-            else if (type === 'attack' && action.isAttack() && action.isForOpponent() && !action.isGuard()) matchType = true;
+            if (type === 'any') {
+                matchType = true;
+            } else if (type === 'attack') {
+                if (action.isForOpponent() && !action.isGuard()) matchType = true;
+            } else if (type === 'support') {
+                if ((action.isForFriend() || action.isRecover()) && !action.isGuard()) matchType = true;
+            }
 
             if (matchType && Math.random() * 100 < chance) {
                 const reactionSkill = $dataSkills[skillId];
@@ -1170,6 +1269,7 @@
         sprite.anchor.x = 0.5;
         sprite.anchor.y = 1;
         
+        // style init
         if (this._animStyle === 'impact') {
             sprite.scale.x = 0.5; sprite.scale.y = 0.5;
         } else if (this._animStyle === 'expand') {
@@ -1179,6 +1279,8 @@
             this.opacity = 0;
         } else if (this._animStyle === 'slash') {
             sprite.scale.x = 0.2; sprite.scale.y = 2.0;
+        } else if (this._animStyle === 'rise') { // [New Style]
+            sprite.scale.x = 0.5; sprite.scale.y = 0.5;
         }
         
         sprite.bitmap.fontSize = h;
@@ -1257,6 +1359,17 @@
             case 'float': // 上浮
                 childSprite.y -= 1.0;
                 break;
+
+            case 'rise': // 上升 (状态升级)
+                // 模拟升腾感
+                childSprite.y -= 1.0; 
+                if (elapsed < this._popupPhaseDur) {
+                    const s = 0.5 + (0.7 * easeOut); // 0.5 -> 1.2
+                    childSprite.scale.x = s; childSprite.scale.y = s;
+                } else {
+                    childSprite.scale.x = 1.2; childSprite.scale.y = 1.2;
+                }
+                break;
         }
 
         if (elapsed >= this._popupPhaseDur + this._holdPhaseDur) {
@@ -1267,19 +1380,15 @@
     };
 
     // 5.3 Sprite_Battler: 角色闪烁逻辑 (动态时长)
-    // [Fix v4.3] Override SetupDamagePopup to allow double popup (text + number)
     Sprite_Battler.prototype.setupDamagePopup = function() {
         if (this._battler.isDamagePopupRequested()) {
             if (this._battler.isSpriteVisible()) {
                 this.createDamageSprite();
             }
             
-            // 如果刚刚弹出文字并且还有伤害数据没显示
             if (this._battler._secKeepResult) {
                 this._battler._secKeepResult = false;
-                // 再次请求弹出 (这次没有 custom text，所以会走原版数字逻辑)
                 this._battler.startDamagePopup(); 
-                // 注意：这里不 clearResult
             } else {
                 this._battler.clearDamagePopup();
                 this._battler.clearResult();
@@ -1326,6 +1435,18 @@
         
         this._waitCount = wait + 10;
     };
+    
+    // [New v4.7] Overwrite waitForAnimation for SecReaction
+    const _Window_BattleLog_waitForAnimation = Window_BattleLog.prototype.waitForAnimation;
+    Window_BattleLog.prototype.waitForAnimation = function() {
+        if (this._action && this._action._isSecReaction) {
+            // Fast paced reaction: fixed delay
+            this.wait(Sec_Params.hitDelay);
+        } else {
+            // Normal behavior
+            _Window_BattleLog_waitForAnimation.call(this);
+        }
+    };
 
     Window_BattleLog.prototype.performSynergyPopup = function(subject, reactionType) {
         let config = Sec_Params.visual.synergy;
@@ -1342,31 +1463,29 @@
     // ----------------------------------------------------------------------
     const _BattleManager_endBattlerActions = BattleManager.endBattlerActions;
     BattleManager.endBattlerActions = function(battler) {
-        // 如果当前结束的行动是“协战/识破”（SecReaction）
         if (this._action && this._action._isSecReaction) {
-            
-            // 恢复状态为 undecided (防止 done 导致变暗)
             battler.setActionState("undecided");
 
-            // 如果角色原本是 Ready/Charging 状态，被 forceAction 移出了队列，现在要加回去
-            // 在 TPB 中，forceAction 会移除角色。如果角色本来是满条的，他现在不在 _actionBattlers 里了。
-            // 我们需要确保他依然能行动。
-            // 简单判断：如果 TPB >= 1 (满条)，则确保他在队列中。
-            
             if (battler.isTpbReady()) { 
                 if (!this._actionBattlers.includes(battler)) {
                     this._actionBattlers.push(battler);
-                    // 重新排序
                     this._actionBattlers.sort((a, b) => b.tpbSpeed() - a.tpbSpeed());
                 }
             }
-            
-            // 跳过原版的 clearTpbChargeTime 和 onAllActionsEnd
-            // 这样就不会重置 TPB 条，也不会消耗 Buff 回合
             return; 
         }
         
         _BattleManager_endBattlerActions.call(this, battler);
+    };
+    
+    // [New v4.7] Override isBusy to ignore animation for reactions
+    const _Spriteset_Battle_isBusy = Spriteset_Battle.prototype.isBusy;
+    Spriteset_Battle.prototype.isBusy = function() {
+        // If we are processing a reaction queue, ignore visual business to speed up
+        if (BattleManager._secReactionQueue && BattleManager._secReactionQueue.length > 0) {
+            return false;
+        }
+        return _Spriteset_Battle_isBusy.call(this);
     };
 
 })();
