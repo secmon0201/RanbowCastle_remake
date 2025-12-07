@@ -7,12 +7,12 @@
  *
  * @help
  * ============================================================================
- * Sec_BattleTimeline.js (v3.4 颜色区分版)
+ * Sec_BattleTimeline.js (v3.5 修复版)
  * ============================================================================
- * * 【更新日志 v3.4】
- * - 视觉优化：区分了推条和拉条的箭头颜色。
- * > 拉条（向左移动，提前行动）：使用黄色 (#FFCA5F)
- * > 推条（向右移动，延后行动）：使用绿色 (#00FF00)
+ * * 【更新日志 v3.5】
+ * - Fix: 修复了多个角色同时满充能时，时间轴上会出现多个黄色高亮块的问题。
+ * 现在只有排在第一位的角色会高亮，避免视觉误导。
+ * - Fix: 增强了队列轮转逻辑的健壮性。
  *
  * ============================================================================
  * (其余参数保持不变)
@@ -304,7 +304,6 @@
 
         // 2. 处理已就绪的角色 (Ticks <= 0)
         // 注意：shift可能导致原本就绪的角色不再就绪，或者原本不就绪的变得就绪
-        // 这里的逻辑需要根据 shift 后的 ticksNeeded 来判断
         const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.1);
         readyBattlers.sort((a, b) => {
             if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.1) {
@@ -496,7 +495,9 @@
                     const candidate = battlerItems[0];
                     
                     // 【队列轮转优化】
-                    const justActed = (candidate.isReady && !pred.isReady && pred.type === 'normal');
+                    // 修正：确保 pred.type 存在，防止 v3.1 兼容性问题
+                    const predType = pred.type || 'normal';
+                    const justActed = (candidate.isReady && !pred.isReady && predType === 'normal');
                     
                     if (battlerItems.length > 1 && justActed) {
                         battlerItems.shift(); 
@@ -525,8 +526,6 @@
             let liveIndex = 0;
             let ghostIndex = 0;
             
-            // 预测列表中包含了 Origin 和 Preview，它们都会占一个 slotIndex，
-            // 从而计算出不同的 X 坐标。
             while (liveIndex < liveItems.length || ghostIndex < ghosts.length) {
                 if (slotIndex >= Conf.maxPred + ghosts.length) break;
 
@@ -602,6 +601,7 @@
                 if (item.opacity <= 1) continue;
                 
                 const isFlashing = (item.isGhost && item.ghostTimer > 30);
+                // 使用位置判断是否为首位，避免逻辑误差
                 const isFirstVisual = (Math.abs(item.x - 4) < 10); 
 
                 this.drawTimelineItem(item, isFlashing, isFirstVisual);
@@ -609,8 +609,6 @@
         }
 
         drawArrows() {
-            // 找到所有配对的 Origin 和 Preview
-            // 我们通过遍历 _visualItems，按 battler 分组查找
             const groups = new Map();
             this._visualItems.forEach(item => {
                 if (item.previewType === 'origin' || item.previewType === 'preview') {
@@ -633,33 +631,26 @@
                     const startX = origin.x + origin.size / 2;
                     const endX = preview.x + preview.size / 2;
                     
-                    // 【颜色区分逻辑】
-                    // 如果 preview 在 origin 左边 (endX < startX) -> 拉条 (Pull)
-                    // 如果 preview 在 origin 右边 (endX > startX) -> 推条 (Push)
                     const isPull = endX < startX;
                     const color = isPull ? Conf.pullColor : Conf.pushColor;
 
                     ctx.strokeStyle = color;
                     ctx.fillStyle = color;
 
-                    // 【位置修正】将 Y 轴向下偏移 2/3 个图块高度，避免重叠
                     const y = origin.y + origin.size / 2 + (origin.size * 2 / 3);
 
-                    // 绘制连线
                     const padding = origin.size / 2 + 4; 
                     const dir = endX > startX ? 1 : -1;
                     
                     const lineStart = startX + (dir * padding);
                     const lineEnd = endX - (dir * padding);
 
-                    // 如果距离太近导致重叠，就不画了
                     if ((dir === 1 && lineStart < lineEnd) || (dir === -1 && lineStart > lineEnd)) {
                         ctx.beginPath();
                         ctx.moveTo(lineStart, y);
                         ctx.lineTo(lineEnd, y);
                         ctx.stroke();
 
-                        // 绘制箭头头部
                         const arrowSize = 6;
                         ctx.beginPath();
                         ctx.moveTo(lineEnd, y);
@@ -698,7 +689,6 @@
 
             // 特殊状态覆盖层
             if (isFlashing) {
-                // 死亡/消失闪烁
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
                 const flashAlpha = 0.6 + Math.sin(Date.now() / 30) * 0.4;
@@ -706,32 +696,32 @@
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
             } else if (item.previewType === 'preview') {
-                // 预览图块的高亮叠加
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
-                ctx.fillStyle = `rgba(100, 255, 100, 0.3)`; // 微绿光
+                ctx.fillStyle = `rgba(100, 255, 100, 0.3)`; 
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
             } else if (item.previewType === 'origin') {
-                // 原点图块稍微变暗
                 ctx.save();
                 ctx.fillStyle = `rgba(0, 0, 0, 0.4)`;
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
             }
 
-            // 边框
+            // 边框绘制
             ctx.save();
             ctx.lineWidth = 1; 
             
             let color = Conf.borderColor; 
             if (isFirstVisual) {
+                // 第一顺位：大图标+橙色高亮
                 color = "#FFCA5F"; 
                 ctx.lineWidth = 2; 
-            } else if (item.isReady) {
-                color = "#FFFF00"; 
-            } else if (item.previewType === 'preview') {
-                color = "#00FF00"; // 预览状态绿框
+            } 
+            // [Fix v3.5] 移除了 item.isReady 的高亮判断
+            // 只有第一顺位会高亮，后续的 "Ready" 角色显示普通边框，避免误导
+            else if (item.previewType === 'preview') {
+                color = "#00FF00"; 
             }
 
             ctx.strokeStyle = color;
