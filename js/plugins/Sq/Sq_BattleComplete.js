@@ -368,10 +368,12 @@
         _Window_Command_processHandling.call(this);
     };
 
-    // [v3.7 核心修复：视觉看门狗逻辑优化]
+   // [v3.7 核心修复：视觉看门狗逻辑优化] + [v4.8 协战队列兼容]
     const _Scene_Battle_updateInputWindowVisibility = Scene_Battle.prototype.updateInputWindowVisibility;
     Scene_Battle.prototype.updateInputWindowVisibility = function() {
-        // 1. 如果正在阻塞，强制隐藏
+        // -----------------------------------------------------------------
+        // 1. [优先级最高] 日志阻塞检测
+        // -----------------------------------------------------------------
         if (this.isRainbowBlocking()) {
             this.hideSubInputWindows();
             if (this._partyCommandWindow) this._partyCommandWindow.visible = false;
@@ -379,11 +381,27 @@
             return; 
         }
 
-        // 2. 如果没有阻塞，调用原版逻辑
+        // -----------------------------------------------------------------
+        // 2. [新增] Sec战斗机制 - 协战/识破队列检测
+        // 如果协战队列中有待执行的动作，强制隐藏所有输入窗口，并直接中断后续逻辑
+        // -----------------------------------------------------------------
+        if (BattleManager._secReactionQueue && BattleManager._secReactionQueue.length > 0) {
+            this.hideSubInputWindows();
+            if (this._partyCommandWindow) this._partyCommandWindow.visible = false;
+            if (this._actorCommandWindow) this._actorCommandWindow.visible = false;
+            return; // 直接返回，禁止触发下方的看门狗
+        }
+
+        // -----------------------------------------------------------------
+        // 3. 原版逻辑
+        // -----------------------------------------------------------------
+        // 如果没有阻塞且没有协战，调用原版逻辑
         _Scene_Battle_updateInputWindowVisibility.call(this);
 
-        // 3. [看门狗逻辑 - v3.7 修复版]
+        // -----------------------------------------------------------------
+        // 4. [看门狗逻辑 - v3.7 修复版]
         // 防止窗口在狂按回车后“弄丢”，但必须避开子窗口（技能/物品/目标选择）
+        // -----------------------------------------------------------------
         if (BattleManager.isInputting()) {
             // 检查是否有子窗口正在活动（技能、物品、角色选择、敌人选择）
             // 如果有子窗口活动，说明玩家正在二级菜单，此时不应该强制显示一级指令窗口
