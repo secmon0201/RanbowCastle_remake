@@ -1,24 +1,20 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 综合UI重构 & 彩虹专用日志 & 状态窗口强制锁定
- * @author 神枪手 (Merged by Gemini & Fixed)
+ * @plugindesc [战斗] 综合UI重构 & 全面防崩版 (v4.1 All-Safe)
+ * @author 神枪手 (Merged & Fixed by Gemini)
  *
  * @help
  * ============================================================================
- * 插件说明 (v3.7 Fixed)
+ * 插件说明 (v4.1 全面防御版)
  * ============================================================================
- * 本插件是将以下三个插件合并为一的综合版，功能完全保留：
- * 1. Sq_BattleUI (全窗口位置重构 & 头像优化)
- * 2. Sq_BattleWindow (绝对阻塞式日志系统)
- * 3. Sq_BattleStatusWindowFixed (状态栏位置锁死 & 智能避让)
- *
- * ============================================================================
- * v3.7 修复日志 (解决指令冲突)
- * ============================================================================
- * 1. [修复看门狗误判]：修复了在选择技能目标或物品目标时，防消失逻辑错误地
- * 将“角色指令窗口”强制弹出，导致操作被中断的问题。
- * 2. [层级优化]：现在在选择“我方目标”（如加血选人）时，底部固定的状态栏
- * 也会暂时隐藏，避免与“目标选择窗口”重叠产生视觉冲突。
+ * 本插件集成了以下功能，并修复了所有已知崩溃问题：
+ * 1. 界面重构：全窗口位置自定义、头像优化。
+ * 2. 核心修复：
+ * - 修复 "setAttack of undefined" (点击攻击崩溃)
+ * - 修复 "setSkill of undefined" (点击技能崩溃) <--- v4.1 新增
+ * - 修复 "setItem of undefined" (点击物品崩溃)   <--- v4.1 新增
+ * 3. 智能逻辑：优化了窗口激活逻辑，防止在TPB回合切换时误触。
+ * 4. 状态锁定：状态窗口位置强制锁定与智能避让。
  *
  * ============================================================================
  * 参数设置区域
@@ -320,7 +316,7 @@
         }
     };
 
-    // 4. [流程阻断与输入冷冻] v3.5 核心修复
+    // 4. [流程阻断与输入冷冻] 核心逻辑
     // -------------------------------------------------------------------------
     
     // 辅助函数：判断是否正在阻塞
@@ -356,24 +352,19 @@
         _Scene_Battle_updateBattleProcess.call(this);
     };
 
-    // [v3.5 核心修复：输入冷冻]
-    // 拦截 Window_Command (包括 PartyCommand 和 ActorCommand) 的输入处理
-    // 当日志阻塞时，任何按键（OK/Cancel等）都会被直接忽略。
     const _Window_Command_processHandling = Window_Command.prototype.processHandling;
     Window_Command.prototype.processHandling = function() {
         const scene = SceneManager._scene;
         if (scene instanceof Scene_Battle && scene.isRainbowBlocking()) {
-            return; // 强制停止输入处理，狂按回车无效
+            return; // 强制停止输入处理
         }
         _Window_Command_processHandling.call(this);
     };
 
-   // [v3.7 核心修复：视觉看门狗逻辑优化] + [v4.8 协战队列兼容]
+    // [v4.0 核心重写：视觉看门狗逻辑优化]
     const _Scene_Battle_updateInputWindowVisibility = Scene_Battle.prototype.updateInputWindowVisibility;
     Scene_Battle.prototype.updateInputWindowVisibility = function() {
-        // -----------------------------------------------------------------
-        // 1. [优先级最高] 日志阻塞检测
-        // -----------------------------------------------------------------
+        // 1. 日志阻塞检测
         if (this.isRainbowBlocking()) {
             this.hideSubInputWindows();
             if (this._partyCommandWindow) this._partyCommandWindow.visible = false;
@@ -381,44 +372,35 @@
             return; 
         }
 
-        // -----------------------------------------------------------------
-        // 2. [新增] Sec战斗机制 - 协战/识破队列检测
-        // 如果协战队列中有待执行的动作，强制隐藏所有输入窗口，并直接中断后续逻辑
-        // -----------------------------------------------------------------
+        // 2. 协战队列检测
         if (BattleManager._secReactionQueue && BattleManager._secReactionQueue.length > 0) {
             this.hideSubInputWindows();
             if (this._partyCommandWindow) this._partyCommandWindow.visible = false;
             if (this._actorCommandWindow) this._actorCommandWindow.visible = false;
-            return; // 直接返回，禁止触发下方的看门狗
+            return; 
         }
 
-        // -----------------------------------------------------------------
         // 3. 原版逻辑
-        // -----------------------------------------------------------------
-        // 如果没有阻塞且没有协战，调用原版逻辑
         _Scene_Battle_updateInputWindowVisibility.call(this);
 
-        // -----------------------------------------------------------------
-        // 4. [看门狗逻辑 - v3.7 修复版]
-        // 防止窗口在狂按回车后“弄丢”，但必须避开子窗口（技能/物品/目标选择）
-        // -----------------------------------------------------------------
+        // 4. [看门狗逻辑 - 智能安全版]
         if (BattleManager.isInputting()) {
-            // 检查是否有子窗口正在活动（技能、物品、角色选择、敌人选择）
-            // 如果有子窗口活动，说明玩家正在二级菜单，此时不应该强制显示一级指令窗口
             const isSubWindowActive = (this._skillWindow && this._skillWindow.active) || 
                                       (this._itemWindow && this._itemWindow.active) ||
                                       (this._actorWindow && this._actorWindow.active) ||
                                       (this._enemyWindow && this._enemyWindow.active);
 
             if (!isSubWindowActive) {
-                if (BattleManager.actor()) {
-                    // 如果轮到角色行动且没有子窗口活动
-                    if (this._actorCommandWindow && !this._actorCommandWindow.visible) {
-                        this._actorCommandWindow.show();
-                        this._actorCommandWindow.activate();
+                const actor = BattleManager.actor();
+                if (actor) {
+                    // ★★★ 关键修改：只有当角色确实允许输入时，才强制显示窗口
+                    if (actor.canInput()) { 
+                        if (this._actorCommandWindow && !this._actorCommandWindow.visible) {
+                            this._actorCommandWindow.show();
+                            this._actorCommandWindow.activate();
+                        }
                     }
                 } else {
-                    // 如果是队伍指令（战斗/逃跑）
                     if (this._partyCommandWindow && !this._partyCommandWindow.visible) {
                         this._partyCommandWindow.show();
                         this._partyCommandWindow.activate();
@@ -553,7 +535,6 @@
     // ----------------------- MODULE 2: BATTLE UI (Rects) --------------------
     // ========================================================================
 
-    // 这是脸图战斗窗口
     Scene_Battle.prototype.statusWindowRect = function() {
         const extra = -1;
         const ww = 480;
@@ -566,40 +547,25 @@
     Window_BattleStatus.prototype.drawFace = function(faceName, faceIndex, x, y, width, height) {
         width = width || ImageManager.faceWidth;
         height = height || ImageManager.faceHeight;
-        
-        // 获取头像位图
         const bitmap = ImageManager.loadFace(faceName);
-        
-        // 计算头像在整幅图中的位置
         const pw = ImageManager.faceWidth;
         const ph = ImageManager.faceHeight;
         const sw = pw;
         const sh = ph;
         const dx = x;
         const dy = y;
-        
-        // 设置可用绘制区域
         const availableWidth = width || 120;
         const availableHeight = height || 120;
-        
-        // 计算等比例缩放因子
         const scaleX = availableWidth / pw;
         const scaleY = availableHeight / ph;
         const scale = Math.min(scaleX, scaleY, 1);
-        
-        // 计算缩放后的尺寸
         const dw = pw * scale;
         const dh = ph * scale;
-        
-        // 计算源图区域（处理faceIndex，支持一张图多个头像）
         const sx = (faceIndex % 4) * pw;
         const sy = Math.floor(faceIndex / 4) * ph;
-        
-        // 使用正确的方法绘制
         this.contents.blt(bitmap, sx, sy, sw, sh, dx, dy, dw, dh);
     };
 
-    // 战斗选择界面位置的数据
     Scene_Message.prototype.messageWindowRect = function() {
         const ww = Graphics.boxWidth;
         const wh = this.calcWindowHeight(4, false) + 8;
@@ -608,25 +574,22 @@
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // 攻击战斗指令的选择窗口位置
     Scene_Battle.prototype.partyCommandWindowRect = function() {
-        const ww = 130;//192是默认值
+        const ww = 130;
         const wh = 200;
         const wx = 0;
         const wy = Graphics.boxHeight - wh;
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // 战斗指令选择窗口的位置
     Scene_Battle.prototype.actorCommandWindowRect = function() {
-        const ww = 130;//192是默认值
+        const ww = 130;
         const wh = 200;
-        const wx = 0;// 固定在左侧x=0的位置，去掉原有的条件判断
+        const wx = 0;
         const wy = 70;
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // 敌人选择窗口
     Scene_Battle.prototype.enemyWindowRect = function() {
         const wx = 190;
         const ww = this._statusWindow.width;
@@ -635,7 +598,6 @@
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // 战斗日志窗口 (此部分被Module 1重写，保留结构兼容)
     Scene_Battle.prototype.logWindowRect = function() {
         const wx = 0;
         const wy = 500;
@@ -644,7 +606,6 @@
         return new Rectangle(wx, wy, ww, wh);
     }
 
-    // 战斗中返回按钮的位置
     Scene_Battle.prototype.createCancelButton = function() {
         this._cancelButton = new Sprite_Button("cancel");
         this._cancelButton.x = 10000;
@@ -665,7 +626,6 @@
     // ------------------- MODULE 3: STATUS WINDOW FIXED ----------------------
     // ========================================================================
     
-    // 参数解析 - 状态栏固定
     const parseParamSafe = (val, defaultVal) => {
         if (val === undefined || val === "") return defaultVal;
         const num = Number(val);
@@ -677,7 +637,7 @@
     const fixedWidth = parameters['fixedWidth'] ? parseInt(parameters['fixedWidth']) : null;
     const fixedHeight = parameters['fixedHeight'] ? parseInt(parameters['fixedHeight']) : null;
 
-    // 1. 固定状态窗口的位置和尺寸 (使用别名捕获 Module 2 定义的方法)
+    // 固定状态窗口
     const _Scene_Battle_statusWindowRect = Scene_Battle.prototype.statusWindowRect;
     Scene_Battle.prototype.statusWindowRect = function() {
         const originalRect = _Scene_Battle_statusWindowRect.call(this);
@@ -686,7 +646,6 @@
         return new Rectangle(fixedX, fixedY, ww, wh);
     };
 
-    // 2. 创建窗口后强制设置位置
     const _Scene_Battle_createStatusWindow = Scene_Battle.prototype.createStatusWindow;
     Scene_Battle.prototype.createStatusWindow = function() {
         _Scene_Battle_createStatusWindow.call(this);
@@ -697,7 +656,6 @@
         }
     };
 
-    // 3. 重写窗口的移动方法 (防止引擎内部移动窗口)
     const _Window_Base_setX = Window_Base.prototype.setX;
     Window_Base.prototype.setX = function(x) {
         if (!this._isFixedPosition) {
@@ -712,10 +670,43 @@
         }
     };
 
-    // 4. 确保攻击指令选择时窗口保持可见和位置不变
-    const _Scene_Battle_commandAttack = Scene_Battle.prototype.commandAttack;
+    // ========================================================================
+    // ------------------- MODULE 4: ULTRA CRASH FIXES ------------------------
+    // ========================================================================
+    
+    // 通用：安全获取 Action 的函数
+    function getSafeAction(instance) {
+        let action = BattleManager.inputtingAction();
+        const actor = BattleManager.actor();
+        
+        if (!action && actor) {
+            console.warn("⚠️ [Sq_BattleComplete] 动作槽丢失，正在修复...");
+            // 如果动作列表是空的，强制初始化
+            if (actor.numActions() === 0) actor.makeActions();
+            action = BattleManager.inputtingAction();
+        }
+        
+        if (!action) {
+            console.error("❌ [Sq_BattleComplete] 动作对象仍为空，操作被拦截。");
+            SoundManager.playBuzzer();
+            if (instance && instance.commandCancel) {
+                instance.commandCancel();
+            } else if (instance && instance.onCancel) {
+                instance.onCancel();
+            }
+            return null;
+        }
+        return action;
+    }
+
+    // 1. [修复] 攻击指令 (setAttack of undefined)
     Scene_Battle.prototype.commandAttack = function() {
-        _Scene_Battle_commandAttack.call(this);
+        const action = getSafeAction(this);
+        if (action) {
+            action.setAttack();
+            this.onSelectAction();
+        }
+        // 恢复状态窗口显示
         if (this._statusWindow) {
             this._statusWindow.visible = true;
             this._statusWindow.x = fixedX;
@@ -723,64 +714,76 @@
         }
     };
 
- // 5. [v4.3 最终稳定版] 修复报错与坐标同步
-    // 修复记录：
-    // 1. [紧急修复] 删除了导致报错的 setChildIndex 代码。
-    // 2. 保留了强制坐标同步逻辑，解决"光标不动"的问题。
-    // 3. 这里的逻辑是：让 _actorWindow (隐形的光标层) 完美重合在 _statusWindow (显示的头像层) 上。
+    // 2. [修复] 技能指令 (setSkill of undefined)
+    Scene_Battle.prototype.onSkillOk = function() {
+        const skill = this._skillWindow.item();
+        const action = getSafeAction(this);
+        if (action) {
+            action.setSkill(skill.id);
+            BattleManager.actor().setLastBattleSkill(skill);
+            this.onSelectAction();
+        }
+    };
+
+    // 3. [修复] 物品指令 (setItem of undefined)
+    Scene_Battle.prototype.onItemOk = function() {
+        const item = this._itemWindow.item();
+        const action = getSafeAction(this);
+        if (action) {
+            action.setItem(item.id);
+            $gameParty.setLastItem(item);
+            this.onSelectAction();
+        }
+    };
+
+    // 4. [修复] 防御指令 (setGuard of undefined)
+    Scene_Battle.prototype.commandGuard = function() {
+        const action = getSafeAction(this);
+        if (action) {
+            action.setGuard();
+            this.onSelectAction();
+        }
+    };
+
+    // 5. 界面更新与坐标同步
     const _Scene_Battle_update = Scene_Battle.prototype.update;
     Scene_Battle.prototype.update = function() {
         _Scene_Battle_update.call(this);
         
-        // --- 1. 基础数据获取 ---
         const action = BattleManager.inputtingAction();
         const isNormalAttack = action ? action.isAttack() : false;
         const isMessagePlaying = $gameMessage.isBusy();
 
-        // --- 2. 窗口激活状态检测 ---
         const isBrowsingList = (this._skillWindow && this._skillWindow.active) || 
                                (this._itemWindow && this._itemWindow.active);
-        
         const isSelectingActor = (this._actorWindow && this._actorWindow.active);
-
         const isSelectingEnemyWithSkill = (this._enemyWindow && this._enemyWindow.active) && !isNormalAttack;
 
-        // --- 3. 状态窗口 (Status Window) 可见性控制 ---
         if (this._statusWindow) {
-            // 隐藏条件：翻列表、技能选敌人、剧情对话
             if (isBrowsingList || isSelectingEnemyWithSkill || isMessagePlaying) {
                 this._statusWindow.visible = false;
             } else {
-                // 强制显示逻辑
                 if (!BattleManager.isBattleEnd()) {
                     if (!this._statusWindow.visible) this._statusWindow.visible = true;
                 }
-                
-                // 锁定背景板位置
                 if (this._statusWindow.x !== fixedX) this._statusWindow.x = fixedX;
                 if (this._statusWindow.y !== fixedY) this._statusWindow.y = fixedY;
             }
         }
 
-        // --- 4. [核心修复] 队友选择窗口 (_actorWindow) 坐标同步 ---
         if (this._actorWindow && this._statusWindow) {
-            // 强制同步坐标和尺寸
-            // 只要这一步做到了，光标就会出现在正确的位置
             this._actorWindow.x = this._statusWindow.x;
             this._actorWindow.y = this._statusWindow.y;
             this._actorWindow.width = this._statusWindow.width;
             this._actorWindow.height = this._statusWindow.height;
             
-            // 如果正在选人，确保它可见
             if (isSelectingActor) {
                  this._actorWindow.visible = true;
                  this._actorWindow.cursorVisible = true;
             }
         }
 
-        // --- 5. 帮助窗口 (Help Window) 可见性控制 ---
         if (this._helpWindow) {
-            // 选择队友时，隐藏帮助窗口，防止遮挡
             if (isSelectingActor) {
                 this._helpWindow.visible = false;
             }

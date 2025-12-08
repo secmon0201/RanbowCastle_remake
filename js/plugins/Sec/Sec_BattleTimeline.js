@@ -1,20 +1,17 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序 (v4.0 视觉增强版)
+ * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序 (v4.1 交互修复版)
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
  *
  * @help
  * ============================================================================
- * Sec_BattleTimeline.js (v4.0 视觉增强版)
+ * Sec_BattleTimeline.js (v4.1 交互修复版)
  * ============================================================================
- * * 【更新日志 v4.0】
- * 1. [视觉] 新增首位图标呼吸脉动效果，一眼识别当前行动者。
- * 2. [视觉] 新增图块进场动画，预测生成更自然。
- * 3. [视觉] 新增就绪闪光，角色回合到来时会有高亮提示。
- * 4. [配置] 更新了所有默认参数为您的最新设定。
- * 5. [修复] 修正了已行动的角色被推条后图标卡在首位的 Bug。
+ * * 【更新日志 v4.1】
+ * 1. [修复] 修复了“玩家正在选技能时被推条”导致的 'setSkill of undefined' 崩溃。
+ * 原理：在剥夺角色行动权的同时，强制刷新场景窗口状态，立即使窗口失效。
  *
  * ============================================================================
  * * @param ---Settings---
@@ -188,7 +185,7 @@
     };
 
     // ========================================================================
-    //  修复版：推条逻辑 (强制状态回退)
+    //  修复版 v4.1：推条逻辑 (强制状态回退 + 窗口刷新)
     // ========================================================================
     BattleManager.applyTpbTickShift = function(target, ticks) {
         if (!target) return;
@@ -204,8 +201,6 @@
         target._tpbChargeTime = Math.max(0, Math.min(1, target._tpbChargeTime + deltaCharge));
 
         // 【核心修复逻辑】
-        // 如果数值被推到了 1 以下，且当前处于充能完毕(charged)或准备就绪(ready)状态，
-        // 必须强制将状态回退到 'charging'，否则预测系统会认为它依然在行动队列首位。
         if (target._tpbChargeTime < 1.0) {
             if (target.isTpbCharged() || target.isTpbReady()) {
                 // 1. 强制重置状态为充能中
@@ -214,11 +209,17 @@
                 target._tpbTurnEnd = false; 
 
                 // 3. 特殊处理：如果被推条的是“当前正在选菜单的玩家角色”
-                // 需要强制取消其输入状态，否则菜单会卡住或产生逻辑错误
                 if (target === this._currentActor) {
                     this.cancelActorInput();
                     this._inputting = false;
                     this._currentActor = null;
+
+                    // [Fix v4.1] 立即刷新场景窗口状态
+                    // 这会强制调用 updateInputWindowVisibility -> closeCommandWindows
+                    // 从而让 Window_BattleSkill 等窗口立即 deactivate，防止 processTouch 继续响应导致崩溃
+                    if (SceneManager._scene instanceof Scene_Battle) {
+                        SceneManager._scene.updateInputWindowVisibility();
+                    }
                 }
             }
         }
@@ -390,7 +391,7 @@
     };
 
     // ========================================================================
-    //  UI 组件 (视觉升级核心)
+    //  UI 组件
     // ========================================================================
     
     class VisualItem {
@@ -413,13 +414,11 @@
             this.ticks = 0;
             this.previewType = 'normal'; 
             
-            // [New] 视觉特效变量
             this._pulsePhase = 0; // 呼吸相位
             this._flashTimer = 0; // 闪光计时
         }
 
         update() {
-            // [Update] 平滑移动算法 (Ease-out)
             const spd = Conf.animSpeed;
             this.x += (this.targetX - this.x) * spd;
             this.y += (this.targetY - this.y) * spd;
@@ -430,13 +429,12 @@
                 this.ghostTimer--;
             }
 
-            // 更新特效状态
             this._pulsePhase = (this._pulsePhase + 0.1) % (Math.PI * 2);
             if (this._flashTimer > 0) this._flashTimer--;
         }
 
         triggerFlash() {
-            this._flashTimer = 15; // 闪光持续15帧
+            this._flashTimer = 15; 
         }
     }
 
@@ -492,10 +490,8 @@
             const predList = BattleManager._predictedTimeline || [];
             const selections = this.getCurrentSelection();
 
-            // 1. 重置匹配状态
             this._visualItems.forEach(i => { if(!i.isGhost) i.matched = false; });
 
-            // 2. 分组并排序
             const itemsByBattler = new Map();
             for (const item of this._visualItems) {
                 if (item.isGhost) continue;
@@ -515,7 +511,6 @@
             this._visualItems.forEach(i => maxVisualX = Math.max(maxVisualX, i.x));
             const spawnX = (maxVisualX > 0 ? maxVisualX : 0) + Conf.stdSize + Conf.spacing;
 
-            // 3. 匹配逻辑
             for (const pred of predList) {
                 const battlerItems = itemsByBattler.get(pred.battler);
                 let item = null;
@@ -535,14 +530,12 @@
                 }
 
                 if (!item) {
-                    // [New] 初始生成时，让它从更右边一点滑入，增加进场感
                     item = new VisualItem(pred.battler, spawnX + 50, 4, Conf.stdSize);
                     this._visualItems.push(item);
                 }
 
                 item.matched = true;
                 
-                // [New] 检测 Ready 状态突变，触发闪光
                 if (!item.isReady && pred.isReady) {
                     item.triggerFlash();
                 }
@@ -553,7 +546,6 @@
                 liveItems.push(item);
             }
 
-            // 4. 计算目标坐标
             let currentX = 4;
             let slotIndex = 0;
             let liveIndex = 0;
@@ -696,12 +688,10 @@
             let size = Math.floor(item.size);
             const opacity = item.opacity;
             
-            // [New] 呼吸效果：如果是首位且非幽灵，让它微微脉动
             if (isFirstVisual && !item.isGhost && item.matched) {
-                const pulseScale = 1.0 + Math.sin(item._pulsePhase) * 0.05; // 1.0 ~ 1.05
+                const pulseScale = 1.0 + Math.sin(item._pulsePhase) * 0.05; 
                 const oldSize = size;
                 size = Math.floor(size * pulseScale);
-                // 居中修正
                 x -= (size - oldSize) / 2;
                 y -= (size - oldSize) / 2;
             }
@@ -723,9 +713,7 @@
                 this.drawEnemyIcon(item.battler, x, y, size);
             }
 
-            // [New] 就绪闪光 / 幽灵闪烁 / 预览高亮
             if (isGhostFlash) {
-                // 死亡闪烁
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
                 const flashAlpha = 0.6 + Math.sin(Date.now() / 30) * 0.4;
@@ -733,7 +721,6 @@
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
             } else if (item._flashTimer > 0) {
-                // [New] Ready 闪光
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 const alpha = item._flashTimer / 15; 
@@ -753,7 +740,6 @@
                 ctx.restore();
             }
 
-            // 边框
             ctx.save();
             ctx.lineWidth = 1; 
             
