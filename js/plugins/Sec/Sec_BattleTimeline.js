@@ -1,21 +1,22 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序
+ * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序 (v4.0 视觉增强版)
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
  *
  * @help
  * ============================================================================
- * Sec_BattleTimeline.js (v3.5 修复版)
+ * Sec_BattleTimeline.js (v4.0 视觉增强版)
  * ============================================================================
- * * 【更新日志 v3.5】
- * - Fix: 修复了多个角色同时满充能时，时间轴上会出现多个黄色高亮块的问题。
- * 现在只有排在第一位的角色会高亮，避免视觉误导。
- * - Fix: 增强了队列轮转逻辑的健壮性。
+ * * 【更新日志 v4.0】
+ * 1. [视觉] 新增首位图标呼吸脉动效果，一眼识别当前行动者。
+ * 2. [视觉] 新增图块进场动画，预测生成更自然。
+ * 3. [视觉] 新增就绪闪光，角色回合到来时会有高亮提示。
+ * 4. [配置] 更新了所有默认参数为您的最新设定。
+ * 5. [修复] 修正了已行动的角色被推条后图标卡在首位的 Bug。
  *
  * ============================================================================
- * (其余参数保持不变)
  * * @param ---Settings---
  * @text === 基础设置 ===
  * @default
@@ -26,7 +27,7 @@
  * @desc 时间轴窗口的 X 坐标。
  * @type number
  * @min -9999
- * @default 80
+ * @default 128
  *
  * @param TimelineY
  * @text 时间轴 Y 坐标
@@ -55,28 +56,28 @@
  * @parent ---Settings---
  * @desc 后续预测图标的正方形边长。
  * @type number
- * @default 30
+ * @default 24
  *
  * @param IconSpacing
  * @text 图标间距
  * @parent ---Settings---
  * @desc 图标之间的水平间距。
  * @type number
- * @default 0
+ * @default 2
  *
  * @param SelectionSinkY
  * @text 选中下沉距离
  * @parent ---Settings---
  * @desc 当选中目标时，时间轴图标下沉的像素值。
  * @type number
- * @default 8
+ * @default 12
  *
  * @param MaxPrediction
  * @text 预测深度
  * @parent ---Settings---
  * @desc 向未来预测多少个回合的行动顺序。
  * @type number
- * @default 17
+ * @default 20
  *
  * @param TimeResolution
  * @text 时间分辨率 (倍率)
@@ -137,22 +138,23 @@
     const pluginName = "Sec_BattleTimeline";
     const parameters = PluginManager.parameters(pluginName);
     
+    // 更新默认参数
     const Conf = {
-        x: Number(parameters['TimelineX'] || 80),
-        y: Number(parameters['TimelineY'] === undefined ? 210 : parameters['TimelineY']),
+        x: Number(parameters['TimelineX'] || 128),
+        y: Number(parameters['TimelineY'] === undefined ? 195 : parameters['TimelineY']),
         width: Number(parameters['TimelineWidth'] || 0),
         firstSize: Number(parameters['FirstIconSize'] || 36),
-        stdSize: Number(parameters['IconSize'] || 30),
-        spacing: Number(parameters['IconSpacing'] || 0),
-        sinkY: Number(parameters['SelectionSinkY'] || 8),
-        maxPred: Number(parameters['MaxPrediction'] || 17),
+        stdSize: Number(parameters['IconSize'] || 24),
+        spacing: Number(parameters['IconSpacing'] || 2),
+        sinkY: Number(parameters['SelectionSinkY'] || 12),
+        maxPred: Number(parameters['MaxPrediction'] || 20),
         timeRes: Number(parameters['TimeResolution'] || 10), 
         showBg: parameters['ShowBackgroundBox'] === 'true',
         borderColor: parameters['BoxBorderColor'] || "#490C23",
         enemyScale: Number(parameters['EnemyScale'] || 0.8),
         timeFontSize: Number(parameters['TimeFontSize'] || 12),
-        pullColor: parameters['PullArrowColor'] || "#FFCA5F", // 拉条颜色
-        pushColor: parameters['PushArrowColor'] || "#00FF00", // 推条颜色
+        pullColor: parameters['PullArrowColor'] || "#FFCA5F",
+        pushColor: parameters['PushArrowColor'] || "#00FF00",
         animSpeed: 0.15 
     };
 
@@ -185,14 +187,41 @@
         return Conf.timeRes;
     };
 
+    // ========================================================================
+    //  修复版：推条逻辑 (强制状态回退)
+    // ========================================================================
     BattleManager.applyTpbTickShift = function(target, ticks) {
         if (!target) return;
         const speed = target.tpbSpeed();
         if (speed === 0) return;
+        
+        // 计算推拉幅度
         const refTime = this.isActiveTpb() ? 240 : 60;
         const acceleration = speed / refTime;
         const deltaCharge = -(ticks * acceleration / Conf.timeRes);
+        
+        // 应用数值变化 (限制在 0~1 之间)
         target._tpbChargeTime = Math.max(0, Math.min(1, target._tpbChargeTime + deltaCharge));
+
+        // 【核心修复逻辑】
+        // 如果数值被推到了 1 以下，且当前处于充能完毕(charged)或准备就绪(ready)状态，
+        // 必须强制将状态回退到 'charging'，否则预测系统会认为它依然在行动队列首位。
+        if (target._tpbChargeTime < 1.0) {
+            if (target.isTpbCharged() || target.isTpbReady()) {
+                // 1. 强制重置状态为充能中
+                target._tpbState = "charging";
+                // 2. 确保回合结束标志被清除
+                target._tpbTurnEnd = false; 
+
+                // 3. 特殊处理：如果被推条的是“当前正在选菜单的玩家角色”
+                // 需要强制取消其输入状态，否则菜单会卡住或产生逻辑错误
+                if (target === this._currentActor) {
+                    this.cancelActorInput();
+                    this._inputting = false;
+                    this._currentActor = null;
+                }
+            }
+        }
     };
 
     BattleManager.getPreviewTpbShift = function(battler) {
@@ -269,7 +298,6 @@
 
         const allBattlers = this.allBattleMembers().filter(b => b.isAlive() && b.isAppeared());
         
-        // 1. 初始化模拟状态池
         let simState = [];
         
         allBattlers.forEach(b => {
@@ -277,8 +305,6 @@
             const shift = this.getPreviewTpbShift(b);
             const fullCycle = this.tpbTicksFullCycle(b);
 
-            // 无论是否有变动，都推入一个“当前现实/预览后”的状态
-            // 如果有 shift，这个就是移动后的位置
             simState.push({
                 battler: b,
                 ticksNeeded: Math.max(0, baseTicks + shift),
@@ -286,13 +312,11 @@
                 type: (shift !== 0) ? 'preview' : 'normal'
             });
 
-            // 如果有变动，额外推入一个“原始位置”的状态（幽灵）
-            // 注意：ghost 不应该产生后续的回合循环 (fullCycle设为极大)
             if (shift !== 0) {
                 simState.push({
                     battler: b,
                     ticksNeeded: Math.max(0, baseTicks),
-                    fullCycle: 9999999, // 原点位置仅显示一次，不参与后续迭代
+                    fullCycle: 9999999, 
                     type: 'origin'
                 });
             }
@@ -302,8 +326,6 @@
         let predictionCount = 0;
         let simTimeAccumulator = 0;
 
-        // 2. 处理已就绪的角色 (Ticks <= 0)
-        // 注意：shift可能导致原本就绪的角色不再就绪，或者原本不就绪的变得就绪
         const readyBattlers = simState.filter(s => s.ticksNeeded <= 0.1);
         readyBattlers.sort((a, b) => {
             if (Math.abs(a.ticksNeeded - b.ticksNeeded) < 0.1) {
@@ -321,14 +343,11 @@
                     type: s.type 
                 });
                 predictionCount++;
-                s.ticksNeeded += s.fullCycle; // 只有非 ghost 会正常加循环
+                s.ticksNeeded += s.fullCycle; 
             }
         });
 
-        // 3. 模拟未来时间
         while (predictionCount < Conf.maxPred) {
-            // 每次找出所需时间最短的
-            // 过滤掉那些 ticksNeeded 已经很大的（比如 ghost 处理完一次后）
             const validSims = simState.filter(s => s.ticksNeeded < 9000000);
             if (validSims.length === 0) break;
 
@@ -338,7 +357,6 @@
             const elapsed = winner.ticksNeeded;
             simTimeAccumulator += elapsed;
 
-            // 所有人的等待时间减去流逝时间
             simState.forEach(s => {
                 if (s.ticksNeeded < 9000000) {
                     s.ticksNeeded -= elapsed;
@@ -353,11 +371,10 @@
             });
             predictionCount++;
 
-            // 只有非 Origin 的实体才会产生下一个行动回合
             if (winner.type !== 'origin') {
                 winner.ticksNeeded = winner.fullCycle;
             } else {
-                winner.ticksNeeded = 9999999; // 销毁 ghost
+                winner.ticksNeeded = 9999999; 
             }
         }
 
@@ -373,7 +390,7 @@
     };
 
     // ========================================================================
-    //  UI 组件
+    //  UI 组件 (视觉升级核心)
     // ========================================================================
     
     class VisualItem {
@@ -389,15 +406,20 @@
             this.targetSize = size;
             this.targetOpacity = 255;
             
-            this.isGhost = false; // 是否是真正的“死亡/移除”幽灵
+            this.isGhost = false; 
             this.ghostTimer = 0;
             this.isReady = false; 
             this.matched = false;
             this.ticks = 0;
-            this.previewType = 'normal'; // 'normal' | 'origin' | 'preview'
+            this.previewType = 'normal'; 
+            
+            // [New] 视觉特效变量
+            this._pulsePhase = 0; // 呼吸相位
+            this._flashTimer = 0; // 闪光计时
         }
 
         update() {
+            // [Update] 平滑移动算法 (Ease-out)
             const spd = Conf.animSpeed;
             this.x += (this.targetX - this.x) * spd;
             this.y += (this.targetY - this.y) * spd;
@@ -407,6 +429,14 @@
             if (this.isGhost) {
                 this.ghostTimer--;
             }
+
+            // 更新特效状态
+            this._pulsePhase = (this._pulsePhase + 0.1) % (Math.PI * 2);
+            if (this._flashTimer > 0) this._flashTimer--;
+        }
+
+        triggerFlash() {
+            this._flashTimer = 15; // 闪光持续15帧
         }
     }
 
@@ -465,7 +495,7 @@
             // 1. 重置匹配状态
             this._visualItems.forEach(i => { if(!i.isGhost) i.matched = false; });
 
-            // 2. 将现有的 Visual Items 按角色分组
+            // 2. 分组并排序
             const itemsByBattler = new Map();
             for (const item of this._visualItems) {
                 if (item.isGhost) continue;
@@ -474,7 +504,6 @@
                 }
                 itemsByBattler.get(item.battler).push(item);
             }
-            // 按 X 坐标排序，确保取出的顺序是从左到右
             itemsByBattler.forEach(list => list.sort((a, b) => a.x - b.x));
 
             const ghosts = this._visualItems.filter(i => i.isGhost);
@@ -493,9 +522,6 @@
 
                 if (battlerItems && battlerItems.length > 0) {
                     const candidate = battlerItems[0];
-                    
-                    // 【队列轮转优化】
-                    // 修正：确保 pred.type 存在，防止 v3.1 兼容性问题
                     const predType = pred.type || 'normal';
                     const justActed = (candidate.isReady && !pred.isReady && predType === 'normal');
                     
@@ -509,14 +535,21 @@
                 }
 
                 if (!item) {
-                    item = new VisualItem(pred.battler, spawnX, 4, Conf.stdSize);
+                    // [New] 初始生成时，让它从更右边一点滑入，增加进场感
+                    item = new VisualItem(pred.battler, spawnX + 50, 4, Conf.stdSize);
                     this._visualItems.push(item);
                 }
 
                 item.matched = true;
+                
+                // [New] 检测 Ready 状态突变，触发闪光
+                if (!item.isReady && pred.isReady) {
+                    item.triggerFlash();
+                }
                 item.isReady = pred.isReady; 
+                
                 item.ticks = pred.ticks; 
-                item.previewType = pred.type; // 记录类型：origin, preview, normal
+                item.previewType = pred.type; 
                 liveItems.push(item);
             }
 
@@ -556,7 +589,6 @@
                 }
                 
                 const isSelected = selections.includes(item.battler);
-                // 无论是 Origin 还是 Preview，只要是选中的人，并且不是第一顺位（当前行动者），都下沉
                 const shouldSink = isSelected && !isFirst; 
                 
                 item.targetY = 4 + (shouldSink ? Conf.sinkY : 0);
@@ -564,7 +596,6 @@
                 if (item.isGhost) {
                     item.targetOpacity = (item.ghostTimer > 30) ? 255 : 0; 
                 } else {
-                    // 旧位置图标不消失。
                     item.targetOpacity = 255; 
                 }
                 
@@ -593,18 +624,15 @@
             if (!this.contents) return;
             this.contents.clear();
             
-            // 先绘制箭头（在图标层之下）
             this.drawArrows();
 
-            // 再绘制图标
             for (const item of this._visualItems) {
                 if (item.opacity <= 1) continue;
                 
-                const isFlashing = (item.isGhost && item.ghostTimer > 30);
-                // 使用位置判断是否为首位，避免逻辑误差
+                const isGhostFlash = (item.isGhost && item.ghostTimer > 30);
                 const isFirstVisual = (Math.abs(item.x - 4) < 10); 
 
-                this.drawTimelineItem(item, isFlashing, isFirstVisual);
+                this.drawTimelineItem(item, isGhostFlash, isFirstVisual);
             }
         }
 
@@ -630,7 +658,6 @@
                 if (origin && preview && Math.abs(origin.x - preview.x) > 10) {
                     const startX = origin.x + origin.size / 2;
                     const endX = preview.x + preview.size / 2;
-                    
                     const isPull = endX < startX;
                     const color = isPull ? Conf.pullColor : Conf.pushColor;
 
@@ -638,7 +665,6 @@
                     ctx.fillStyle = color;
 
                     const y = origin.y + origin.size / 2 + (origin.size * 2 / 3);
-
                     const padding = origin.size / 2 + 4; 
                     const dir = endX > startX ? 1 : -1;
                     
@@ -664,12 +690,22 @@
             ctx.restore();
         }
 
-        drawTimelineItem(item, isFlashing, isFirstVisual) {
-            const x = Math.floor(item.x);
-            const y = Math.floor(item.y);
-            const size = Math.floor(item.size);
+        drawTimelineItem(item, isGhostFlash, isFirstVisual) {
+            let x = Math.floor(item.x);
+            let y = Math.floor(item.y);
+            let size = Math.floor(item.size);
             const opacity = item.opacity;
             
+            // [New] 呼吸效果：如果是首位且非幽灵，让它微微脉动
+            if (isFirstVisual && !item.isGhost && item.matched) {
+                const pulseScale = 1.0 + Math.sin(item._pulsePhase) * 0.05; // 1.0 ~ 1.05
+                const oldSize = size;
+                size = Math.floor(size * pulseScale);
+                // 居中修正
+                x -= (size - oldSize) / 2;
+                y -= (size - oldSize) / 2;
+            }
+
             const ctx = this.contents.context;
             ctx.save();
             ctx.globalAlpha = opacity / 255;
@@ -687,12 +723,21 @@
                 this.drawEnemyIcon(item.battler, x, y, size);
             }
 
-            // 特殊状态覆盖层
-            if (isFlashing) {
+            // [New] 就绪闪光 / 幽灵闪烁 / 预览高亮
+            if (isGhostFlash) {
+                // 死亡闪烁
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
                 const flashAlpha = 0.6 + Math.sin(Date.now() / 30) * 0.4;
                 ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+                ctx.fillRect(x, y, size, size);
+                ctx.restore();
+            } else if (item._flashTimer > 0) {
+                // [New] Ready 闪光
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const alpha = item._flashTimer / 15; 
+                ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
                 ctx.fillRect(x, y, size, size);
                 ctx.restore();
             } else if (item.previewType === 'preview') {
@@ -708,19 +753,15 @@
                 ctx.restore();
             }
 
-            // 边框绘制
+            // 边框
             ctx.save();
             ctx.lineWidth = 1; 
             
             let color = Conf.borderColor; 
             if (isFirstVisual) {
-                // 第一顺位：大图标+橙色高亮
                 color = "#FFCA5F"; 
                 ctx.lineWidth = 2; 
-            } 
-            // [Fix v3.5] 移除了 item.isReady 的高亮判断
-            // 只有第一顺位会高亮，后续的 "Ready" 角色显示普通边框，避免误导
-            else if (item.previewType === 'preview') {
+            } else if (item.previewType === 'preview') {
                 color = "#00FF00"; 
             }
 

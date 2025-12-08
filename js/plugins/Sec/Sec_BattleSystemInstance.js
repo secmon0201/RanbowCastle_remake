@@ -2,7 +2,7 @@
  * @target MZ
  * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
  * @author Secmon (Refactored by Gemini)
- * @version 4.8
+ * @version 4.9
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -289,6 +289,29 @@
  * @dir audio/se/
  * @default Heal1
  *
+ * @param ---Visual DeathRattle---
+ * @text [表现-亡语]
+ * @default
+ * @param DeathRattleText
+ * @parent ---Visual DeathRattle---
+ * @text 文本内容
+ * @default 亡语
+ * @param DeathRattleColor
+ * @parent ---Visual DeathRattle---
+ * @text 文本颜色
+ * @default #BB00FF
+ * @param DeathRattleWait
+ * @parent ---Visual DeathRattle---
+ * @text 停留帧数
+ * @type number
+ * @default 60
+ * @param DeathRattleSE
+ * @parent ---Visual DeathRattle---
+ * @text 音效
+ * @type file
+ * @dir audio/se/
+ * @default Darkness1
+ *
  * @param ---Visual PushPull---
  * @text [表现-推条/拉条]
  * @default
@@ -333,12 +356,12 @@
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v4.8 (状态循环动态版) ★
+ * ★ 插件功能手册 v4.9 (亡语增强版) ★
  * ============================================================================
- * 【更新日志 v4.8】
- * 1. [新增] 状态循环 (State Cycle) 的专属视觉表现。
- * - 动态文本：当状态循环触发时，弹出的文字是【新生成状态的名称】。
- * - 专属动画：使用 [Rise] 升腾动画，文字会向上飘升并变大，体现升级感。
+ * 【更新日志 v4.9】
+ * 1. [新增] 亡语 (Death Rattle) 的视觉表现。
+ * - 当单位死亡并触发亡语效果时，会弹出自定义文本（默认“亡语”）。
+ * - 配有专属颜色和音效，增强战斗反馈。
  *
  * ============================================================================
  */
@@ -437,6 +460,13 @@
                 wait: Number(parameters['DrainWait'] || 60),
                 se: parameters['DrainSE'],
                 style: 'float'
+            },
+            deathRattle: {
+                text: String(parameters['DeathRattleText'] || "亡语"),
+                color: String(parameters['DeathRattleColor'] || "#BB00FF"),
+                wait: Number(parameters['DeathRattleWait'] || 60),
+                se: parameters['DeathRattleSE'],
+                style: 'pulse'
             },
             push: {
                 text: String(parameters['PushText'] || "迟滞"),
@@ -707,12 +737,19 @@
             }
         }
 
-        // A3. 亡语 (略)
+        // A3. 亡语 (添加视觉特效)
         if (target && !wasDead && target.isDead()) {
              const noteData = _Sec_GetBattlerNotes(target);
              if (noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Dead\s*[,，]\s*([^>]+)>/gi);
+                // 确保只触发一次视觉特效，即使有多个亡语效果
+                let visualTriggered = false;
                 for (const match of matches) {
+                    // [Visual] 触发亡语文字特效
+                    if (!visualTriggered) {
+                        target.startCustomPopupConfig(params.deathRattle);
+                        visualTriggered = true;
+                    }
                     try {
                         const formula = match[1].trim();
                         const a = target, b = subject, v = $gameVariables._data, dmg = actualDamage;
@@ -1281,6 +1318,8 @@
             sprite.scale.x = 0.2; sprite.scale.y = 2.0;
         } else if (this._animStyle === 'rise') { // [New Style]
             sprite.scale.x = 0.5; sprite.scale.y = 0.5;
+        } else if (this._animStyle === 'pulse') {
+            sprite.scale.x = 1.0; sprite.scale.y = 1.0;
         }
         
         sprite.bitmap.fontSize = h;
