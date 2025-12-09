@@ -1,24 +1,26 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 视觉表现力增强包 (v2.8 切入线自定义版)
+ * @plugindesc [战斗] 视觉表现力增强包 (v3.1 蓝色识破版)
  * @author Secmon (Visuals)
  * @base Sec_BattleSystemInstance
  * @orderAfter Sec_BattleSystemInstance
  *
  * @help
  * ============================================================================
- * Sec_BattleVisuals.js (v2.8)
+ * Sec_BattleVisuals.js (v3.1)
  * ============================================================================
  * 本插件接管 Sec_BattleSystemInstance 的视觉表现层。
  *
  * 【自定义功能概览】
  * 1. 射线自定义：弹射和溅射的颜色、粗细、透明度均可独立设置。
- * 2. 协战自定义：
- * - 镜头拉近倍率。
- * - 切入图：位置、缩放、裁剪高度。
- * - 切入线：颜色、粗细、透明度 [v2.8新增]。
- * 3. 识破自定义：红框的透明度、粗细。
- * 4. 斩杀自定义：顿帧时长。
+ * 2. 协战自定义：镜头/切入图全参数调整。
+ * 3. 识破自定义：
+ * - 敌人识破：红色警告框。
+ * - 我方识破：蓝色提示框 (v3.1更新)。
+ * 4. 吸血自定义：
+ * - 光球大小、颜色、数量、透明度均可调整。
+ * - 修复了光球不显示或飞向错误的 Bug。
+ * 5. 斩杀自定义：顿帧时长。
  *
  * ============================================================================
  * @param HitStopDuration
@@ -49,19 +51,6 @@
  * @max 100
  * @default 20
  *
- * @param CutinTargetX
- * @text [协战] 切入图目标X
- * @desc 切入动画停止时的X坐标（屏幕左侧为0）。
- * @type number
- * @default 300
- *
- * @param CutinOffsetY
- * @text [协战] 切入图Y偏移
- * @desc 切入图相对于屏幕垂直中心的偏移量。负数向上，正数向下。
- * @type number
- * @min -9999
- * @default -100
- *
  * @param CutinBorderColor
  * @text [协战] 切入线颜色
  * @desc 切入图上下装饰线的颜色 (HEX格式)。
@@ -84,6 +73,19 @@
  * @decimals 2
  * @default 0.50
  *
+ * @param CutinTargetX
+ * @text [协战] 切入图目标X
+ * @desc 切入动画停止时的X坐标（屏幕左侧为0）。
+ * @type number
+ * @default 300
+ *
+ * @param CutinOffsetY
+ * @text [协战] 切入图Y偏移
+ * @desc 切入图相对于屏幕垂直中心的偏移量。负数向上，正数向下。
+ * @type number
+ * @min -9999
+ * @default -100
+ *
  * @param ReactionBorderAlpha
  * @text [识破] 边框不透明度
  * @desc 红框出现时的不透明度 (0-255)。
@@ -98,6 +100,12 @@
  * @type number
  * @min 1
  * @default 20
+ *
+ * @param ActorReactionColor
+ * @text [识破] 我方边框颜色
+ * @desc 我方角色触发识破时的边框颜色 (HEX格式)。
+ * @type string
+ * @default #0088FF
  *
  * @param ---Ricochet Settings---
  * @text [弹射] 射线设置
@@ -153,6 +161,40 @@
  * @decimals 2
  * @default 1.00
  *
+ * @param ---Drain Settings---
+ * @text [吸血] 光球设置
+ *
+ * @param DrainOrbSize
+ * @text 光球大小
+ * @parent ---Drain Settings---
+ * @desc 吸血光球的半径 (像素)。
+ * @type number
+ * @default 8
+ *
+ * @param DrainOrbColor
+ * @text 光球颜色
+ * @parent ---Drain Settings---
+ * @desc 吸血光球的颜色 (HEX格式)。
+ * @type string
+ * @default #FF4444
+ *
+ * @param DrainOrbAlpha
+ * @text 光球透明度
+ * @parent ---Drain Settings---
+ * @desc 吸血光球的不透明度 (0.0 - 1.0)。
+ * @type number
+ * @decimals 2
+ * @min 0
+ * @max 1
+ * @default 1.00
+ *
+ * @param DrainOrbCount
+ * @text 光球数量
+ * @parent ---Drain Settings---
+ * @desc 产生的吸血光球数量。
+ * @type number
+ * @default 5
+ *
  */
 
 (() => {
@@ -165,7 +207,7 @@
     const HIT_STOP_DUR = Number(parameters['HitStopDuration'] || 12);
     const ZOOM_LEVEL   = Number(parameters['SynergyZoomLevel'] || 1.3);
     
-    // 协战参数
+    // 协战
     const CUTIN_SCALE  = Number(parameters['CutinScale'] || 1.5);
     const CUTIN_HEIGHT_PCT = Number(parameters['CutinHeight'] || 20) / 100;
     const CUTIN_TARGET_X = Number(parameters['CutinTargetX'] || 300);
@@ -174,11 +216,12 @@
     const CUTIN_BORDER_THICKNESS = Number(parameters['CutinBorderThickness'] || 2);
     const CUTIN_BORDER_ALPHA = Number(parameters['CutinBorderAlpha'] || 0.5);
 
-    // 识破参数
+    // 识破
     const REACTION_ALPHA = Number(parameters['ReactionBorderAlpha'] || 180);
     const REACTION_SIZE  = Number(parameters['ReactionBorderSize'] || 20);
+    const ACTOR_REACTION_COLOR = parameters['ActorReactionColor'] || '#0088FF';
 
-    // 射线参数
+    // 射线
     const RICOCHET_COLOR = parameters['RicochetBeamColor'] || '#00FFFF';
     const RICOCHET_WIDTH = Number(parameters['RicochetBeamWidth'] || 3);
     const RICOCHET_ALPHA = Number(parameters['RicochetBeamAlpha'] || 1);
@@ -186,6 +229,12 @@
     const SPLASH_COLOR = parameters['SplashBeamColor'] || '#FF8800';
     const SPLASH_WIDTH = Number(parameters['SplashBeamWidth'] || 4);
     const SPLASH_ALPHA = Number(parameters['SplashBeamAlpha'] || 1);
+
+    // 吸血
+    const DRAIN_SIZE = Number(parameters['DrainOrbSize'] || 8);
+    const DRAIN_COLOR = parameters['DrainOrbColor'] || '#FF4444';
+    const DRAIN_ALPHA = Number(parameters['DrainOrbAlpha'] || 1);
+    const DRAIN_COUNT = Number(parameters['DrainOrbCount'] || 5);
 
     // ======================================================================
     // 工具库
@@ -204,7 +253,6 @@
             return { x: sprite.x, y: sprite.y - height / 2, sprite: sprite };
         }
         
-        // 备用坐标
         if (battler.isActor() && $gameSystem.isSideView()) {
             const index = battler.index();
             return { x: 600 + index * 32, y: 280 + index * 48 - 24, sprite: null };
@@ -227,9 +275,10 @@
             this._filters = [];
             this._invertFilter = new PIXI.filters.ColorMatrixFilter();
 
-            // 射线/连线上下文
+            // 上下文记录
             this._splashCenter = null;
             this._ricochetTarget = null;
+            this._drainVictim = null; // 记录吸血受害者
         }
 
         static update() {
@@ -344,11 +393,12 @@
     };
 
     // ======================================================================
-    // Hook: Game_Action
+    // Hook: Game_Action (捕捉伤害关系)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
         VisualManager._splashCenter = target;
+        VisualManager._drainVictim = target; // 记录吸血受害者
         
         if (Date.now() - VisualManager._lastRicochetTime > 800) {
             VisualManager._ricochetTarget = target;
@@ -357,6 +407,7 @@
         _Game_Action_executeDamage.call(this, target, value);
         
         VisualManager._splashCenter = null;
+        VisualManager._drainVictim = null;
     };
 
     // ======================================================================
@@ -384,21 +435,27 @@
             case 'synergy':   
                 VisualManager.triggerZoom(this);
                 break;
-            case 'reaction':  
-                this.createVisualEffect('reactionBorder');
+            case 'reaction':
+                // 判断谁触发的识破（this），分别使用不同颜色
+                if (this.isActor()) {
+                    this.createVisualEffect('reactionBorder', { color: ACTOR_REACTION_COLOR });
+                } else {
+                    this.createVisualEffect('reactionBorder', { color: '#FF0000' });
+                }
                 break;
             case 'exec':      
                 VisualManager.triggerHitStop(HIT_STOP_DUR, true); 
                 $gameScreen.startShake(5, 5, 10);
                 break;
             case 'splash':    
-                // 溅射射线
                 if (VisualManager._splashCenter && VisualManager._splashCenter !== this) {
                     this.createVisualEffect('splashRay', { source: VisualManager._splashCenter });
                 }
                 break;
-            case 'drain':     
-                /* 屏蔽 */
+            case 'drain':
+                if (VisualManager._drainVictim) {
+                    this.createVisualEffect('drainOrb', { source: VisualManager._drainVictim });
+                }
                 break;
             case 'ghost':     
                 this.createVisualEffect('ghost');
@@ -416,7 +473,6 @@
                 $gameScreen.startFlash([255, 255, 255, 180], 8);
                 break;
             case 'ricochet':
-                // 弹射连线
                 if (VisualManager._ricochetTarget && VisualManager._ricochetTarget !== this) {
                     this.createVisualEffect('ricochetRay', { source: VisualManager._ricochetTarget });
                 }
@@ -460,23 +516,26 @@
         if (!this._effectsContainer) return;
         
         switch (type) {
-            case 'reactionBorder': this.createReactionBorder(); break;
+            case 'reactionBorder': this.createReactionBorder(args); break;
             case 'ghost':       this.createGhost(target); break;
             case 'squash':      this.createSquash(target); break;
             case 'ghostTrail':  this.createGhostTrail(target); break;
             case 'iconShatter': this.createIconShatter(target, args); break;
             
-            // 射线类
+            // 射线/粒子类
             case 'splashRay': 
                 if (args && args.source) this.createBeam(args.source, target, 'splash');
                 break;
             case 'ricochetRay':
                 if (args && args.source) this.createBeam(args.source, target, 'ricochet');
                 break;
+            case 'drainOrb':
+                if (args && args.source) this.createDrainOrbs(args.source, target);
+                break;
         }
     };
 
-    // [NEW] 通用射线生成器 (支持参数自定义)
+    // [射线生成器]
     Spriteset_Battle.prototype.createBeam = function(source, target, style) {
         const p1 = getBattlerVisualCenter(source);
         const p2 = getBattlerVisualCenter(target);
@@ -490,7 +549,6 @@
         let alpha = 1;
         let duration = 20;
 
-        // 根据样式读取参数
         if (style === 'splash') {
             colorStr = SPLASH_COLOR;
             width = SPLASH_WIDTH;
@@ -504,26 +562,21 @@
         }
 
         const color = ColorUtil.hexToNum(colorStr);
-
-        // 设置初始透明度
         beam.alpha = alpha;
 
-        // 计算偏移
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
         const offX = (Math.random() - 0.5) * 40;
         const offY = (Math.random() - 0.5) * 40;
 
-        // 主线条
         g.lineStyle(width, color, 1);
         g.moveTo(p1.x, p1.y);
         
         if (style === 'ricochet') {
-            g.lineTo(midX + offX, midY + offY); // 弹射带折线
+            g.lineTo(midX + offX, midY + offY); 
         }
         g.lineTo(p2.x, p2.y);
         
-        // 发光层 (更宽，低透明度)
         g.lineStyle(width * 2, color, 0.3);
         g.moveTo(p1.x, p1.y);
         if (style === 'ricochet') g.lineTo(midX + offX, midY + offY);
@@ -532,7 +585,7 @@
         beam.blendMode = PIXI.BLEND_MODES.ADD;
         
         beam.update = function() {
-            this.alpha -= (alpha / duration); // 按初始透明度递减
+            this.alpha -= (alpha / duration);
             if (this.alpha <= 0) {
                 this.parent.removeChild(this);
                 this.destroy();
@@ -542,12 +595,13 @@
         this._effectsContainer.addChild(beam);
     };
 
-    // 0. 识破红框
-    Spriteset_Battle.prototype.createReactionBorder = function() {
+    // 0. 识破红框 (接受参数)
+    Spriteset_Battle.prototype.createReactionBorder = function(args) {
         const width = Graphics.width;
         const height = Graphics.height;
         const size = REACTION_SIZE;
-        const color = 0xFF0000; 
+        const colorStr = (args && args.color) ? args.color : '#FF0000';
+        const color = ColorUtil.hexToNum(colorStr);
 
         const border = new Sprite();
         const g = new PIXI.Graphics();
@@ -609,7 +663,7 @@
         this._effectsContainer.addChild(ghost);
     };
 
-    // 2. 推条重压 (Squash)
+    // 2. 推条重压
     Spriteset_Battle.prototype.createSquash = function(target) {
         const sprite = this.findTargetSprite(target);
         if (!sprite) return;
@@ -642,7 +696,7 @@
         sprite._secSquashTimer = 0;
     };
 
-    // 3. 拉条残影 (Ghost Trail)
+    // 3. 拉条残影
     Spriteset_Battle.prototype.createGhostTrail = function(target) {
         const sprite = this.findTargetSprite(target);
         if (!sprite || !sprite.bitmap) return;
@@ -679,7 +733,7 @@
         }
     };
 
-    // 4. 状态碎裂 (Icon Shatter)
+    // 4. 状态碎裂
     Spriteset_Battle.prototype.createIconShatter = function(target, args) {
         const pos = getBattlerVisualCenter(target);
         const color = args && args.color ? ColorUtil.hexToNum(args.color) : 0xFFFFFF;
@@ -714,7 +768,7 @@
         }
     };
 
-    // 5. 【重点】角色眼部特写切入 (Eye Cut-in)
+    // 5. 角色切入
     Spriteset_Battle.prototype.createActorCutin = function(actor) {
         const sprite = new Sprite();
         sprite.bitmap = ImageManager.loadFace(actor.faceName());
@@ -724,25 +778,22 @@
         const sx = (actor.faceIndex() % 4) * pw;
         const sy = Math.floor(actor.faceIndex() / 4) * ph;
         
-        // 计算裁剪区域
         const cropH = ph * CUTIN_HEIGHT_PCT;
-        const cropY = sy + (ph - cropH) / 2; // 居中裁剪
+        const cropY = sy + (ph - cropH) / 2; 
         
         sprite.setFrame(sx, cropY, pw, cropH);
 
-        // 初始化
         sprite.anchor.set(0.5);
-        sprite.x = 0 - pw; // 左侧屏幕外
-        sprite.y = Graphics.boxHeight / 2 + CUTIN_OFFSET_Y; // [Custom Y]
+        sprite.x = 0 - pw; 
+        sprite.y = Graphics.boxHeight / 2 + CUTIN_OFFSET_Y; 
         sprite.scale.set(CUTIN_SCALE); 
         sprite.opacity = 255;
         
-        // 装饰线
         const border = new Sprite();
         const g = new PIXI.Graphics();
         const borderColor = ColorUtil.hexToNum(CUTIN_BORDER_COLOR);
-        g.beginFill(borderColor, CUTIN_BORDER_ALPHA); // [Custom Alpha]
-        g.drawRect(0, 0, pw, CUTIN_BORDER_THICKNESS); // [Custom Thickness]
+        g.beginFill(borderColor, CUTIN_BORDER_ALPHA); 
+        g.drawRect(0, 0, pw, CUTIN_BORDER_THICKNESS); 
         g.drawRect(0, cropH, pw, CUTIN_BORDER_THICKNESS); 
         g.endFill();
         border.addChild(g);
@@ -751,25 +802,23 @@
         border.y = -cropH/2;
         sprite.addChild(border);
 
-        // 动画
         sprite._phase = 0; 
         sprite._timer = 0;
         
         sprite.update = function() {
-            if (this._phase === 0) { // Slide In
-                // [Custom Target X]
+            if (this._phase === 0) { 
                 this.x += (CUTIN_TARGET_X - this.x) * 0.25; 
                 this.opacity = Math.min(255, this.x * 2);
                 if (Math.abs(this.x - CUTIN_TARGET_X) < 5) {
                     this._phase = 1;
                     this._timer = 40; 
                 }
-            } else if (this._phase === 1) { // Hold & Drift
+            } else if (this._phase === 1) { 
                 this._timer--;
                 this.x += 1.0; 
                 if (this._timer <= 0) this._phase = 2;
-            } else if (this._phase === 2) { // Fly Out
-                this.x += 30; // 快速飞出屏幕右侧
+            } else if (this._phase === 2) { 
+                this.x += 30; 
                 this.opacity -= 10;
                 if (this.opacity <= 0) {
                     this.parent.removeChild(this);
@@ -778,8 +827,58 @@
             }
         };
 
-        // 放在最上层
         this.addChild(sprite); 
+    };
+
+    // 6. 吸血光球
+    Spriteset_Battle.prototype.createDrainOrbs = function(source, target) {
+        const p1 = getBattlerVisualCenter(source); 
+        const p2 = getBattlerVisualCenter(target); 
+        
+        const color = ColorUtil.hexToNum(DRAIN_COLOR);
+        const count = DRAIN_COUNT;
+
+        for (let i = 0; i < count; i++) {
+            const orb = new Sprite();
+            const g = new PIXI.Graphics();
+            g.beginFill(color);
+            g.drawCircle(0, 0, DRAIN_SIZE);
+            g.endFill();
+            orb.addChild(g);
+            
+            orb.x = p1.x + (Math.random() * 40 - 20);
+            orb.y = p1.y + (Math.random() * 40 - 20);
+            
+            orb._targetX = p2.x;
+            orb._targetY = p2.y;
+            
+            orb.alpha = DRAIN_ALPHA;
+            orb.blendMode = PIXI.BLEND_MODES.ADD;
+            
+            orb._timer = 0;
+            orb._delay = i * 4; 
+
+            orb.update = function() {
+                if (this._delay > 0) {
+                    this._delay--;
+                    this.visible = false;
+                    return;
+                }
+                this.visible = true;
+                this._timer++;
+                const t = this._timer / 25; 
+                if (t >= 1) {
+                    this.parent.removeChild(this);
+                    this.destroy();
+                    return;
+                }
+                this.x += (this._targetX - this.x) * 0.15; 
+                this.y += (this._targetY - this.y) * 0.15;
+                this.scale.set(1.0 - t * 0.5);
+            };
+            
+            this._effectsContainer.addChild(orb);
+        }
     };
 
 })();
