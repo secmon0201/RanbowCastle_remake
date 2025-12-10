@@ -581,7 +581,7 @@
     }
 
     // ======================================================================
-    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage
+    // 2. 核心逻辑挂钩：Game_Action.prototype.executeDamage (Fix v5.0)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
@@ -601,7 +601,7 @@
         if (subject && subject.isAlive()) {
             const noteData = _Sec_GetBattlerNotes(subject);
 
-            // A1. 攻击特效 (略)
+            // A1. 攻击特效
             if (this.isAttack() && noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Attack\s*[,，]\s*([^>]+)>/gi);
                 for (const match of matches) {
@@ -742,10 +742,9 @@
              const noteData = _Sec_GetBattlerNotes(target);
              if (noteData) {
                 const matches = noteData.matchAll(/<战斗触发[:：]\s*Dead\s*[,，]\s*([^>]+)>/gi);
-                // 确保只触发一次视觉特效，即使有多个亡语效果
+                // 确保只触发一次视觉特效
                 let visualTriggered = false;
                 for (const match of matches) {
-                    // [Visual] 触发亡语文字特效
                     if (!visualTriggered) {
                         target.startCustomPopupConfig(params.deathRattle);
                         visualTriggered = true;
@@ -768,18 +767,18 @@
         if (!item) return;
 
         // ------------------------------------------------------------------
-        // 【模块 C】 技能特效 (添加视觉调用)
+        // 【模块 C】 技能特效
         // ------------------------------------------------------------------
         const note = item.note;
         
-        // --- C1. 状态交互 ---
+        // --- C1. 状态交互 [FIXED] ---
         const stateInteractMatches = note.matchAll(/<状态交互[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)\s*>/g);
         for (const match of stateInteractMatches) {
             const stateId = parseInt(match[1]);
             const formula = match[2].trim();
             const removeState = match[3].trim().toLowerCase() === 'true';
             const rawRange = match[4];
-            // ...解析逻辑省略...
+            
             const rangeLower = rawRange.split(/[,，]/)[0].trim().toLowerCase();
             let defaultAnim = DEF_ANIM.HIT;
             if (rangeLower === 'allallies' || rangeLower === 'self') defaultAnim = DEF_ANIM.BUFF;
@@ -807,6 +806,9 @@
                                 t.startDamagePopup();
                                 if (val > 0) t.performDamage();
                                 _Sec_PlayAnim(t, animId); 
+                                
+                                // [Fix v5.0] 死亡结算
+                                if (t.isDead()) t.performCollapse();
                             }
                             if (removeState) t.removeState(stateId);
                         } catch (e) {}
@@ -1022,7 +1024,7 @@
             }
         }
         
-        // --- C6. 状态循环 (恢复 + 动态文本) ---
+        // --- C6. 状态循环 ---
         const stateCycleMatch = note.match(/<状态循环[:：]\s*([^>]+)\s*>/);
         if (stateCycleMatch) {
             const stateIds = stateCycleMatch[1].split(/[,，]/).map(id => parseInt(id.trim()));
@@ -1039,14 +1041,12 @@
                     target.addState(addedStateId);
                 }
 
-                // 触发视觉特效 (动态文本)
                 if (addedStateId > 0) {
                     const stateData = $dataStates[addedStateId];
                     if (stateData) {
                         const baseConfig = Sec_Params.visual.stateCycle;
-                        // 动态克隆配置并覆盖文本
                         const dynamicConfig = {
-                            text: stateData.name, // 使用状态名
+                            text: stateData.name, 
                             color: baseConfig.color,
                             wait: baseConfig.wait,
                             se: baseConfig.se,

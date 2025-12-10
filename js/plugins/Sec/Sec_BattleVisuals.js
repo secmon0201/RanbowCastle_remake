@@ -1,23 +1,29 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 视觉表现力增强包 (v3.7 分类修复/终极版)
+ * @plugindesc [战斗] 视觉表现力增强包 (v4.1 斩杀滤镜重构版)
  * @author Secmon (Visuals)
  * @base Sec_BattleSystemInstance
  * @orderAfter Sec_BattleSystemInstance
  *
  * @help
  * ============================================================================
- * Sec_BattleVisuals.js (v3.7)
+ * Sec_BattleVisuals.js (v4.1)
  * ============================================================================
  * 本插件接管 Sec_BattleSystemInstance 的视觉表现层。
  *
+ * 【v4.1 关键修复】
+ * 1. [Fix] 重构了斩杀滤镜逻辑，解决了“斩杀特效只生效一次”的 Bug。
+ * 原理：每次触发都生成全新的滤镜实例，不再复用旧对象。
+ * 2. [Fix] 优化了滤镜添加方式，解决了“斩杀后导致其他UI/脸图错位”的 Bug。
+ * 原理：现在会保留场景中原有的所有滤镜，只追加反色效果，不搞破坏。
+ *
  * 【功能概览】
  * 1. 射线自定义：弹射(青) / 溅射(橙) 的线条。
- * 2. 协战自定义：镜头拉近、眼部切入图。
+ * 2. 协战自定义：镜头拉近、眼部切入图（位置绝对固定）。
  * 3. 识破自定义：红/蓝双色边框。
  * 4. 吸血自定义：三阶段粒子动画。
  * 5. 推拉条：角色压扁 / 残影拖尾。
- * 6. 斩杀：顿帧 + 震动。
+ * 6. 斩杀：顿帧 + 震动 + 反色。
  *
  * ============================================================================
  * @param ---Synergy Settings---
@@ -305,7 +311,6 @@
     // ======================================================================
     // 0. 读取基础插件配置 (用于精准识别类型)
     // ======================================================================
-    // 我们需要读取 Sec_BattleSystemInstance 的参数来获取用户设定的 Trigger Text
     const baseParams = PluginManager.parameters("Sec_BattleSystemInstance") || {};
     
     const TEXT_PUSH = String(baseParams['PushText'] || "迟滞");
@@ -411,8 +416,9 @@
             this._lastRicochetTime = 0;
             this._zoomTarget = null;
             this._zoomPhase = 0;
-            this._filters = [];
-            this._invertFilter = new PIXI.filters.ColorMatrixFilter();
+            
+            // [Fix] 动态滤镜管理，不再保留静态引用
+            this._activeHitStopFilter = null;
 
             // 射线/连线上下文
             this._splashCenter = null;
@@ -434,20 +440,35 @@
 
         static triggerHitStop(duration, invertColor = false) {
             this._hitStopTimer = duration;
+            
+            // [Fix v4.1] 每次触发前先清理可能存在的旧滤镜，防止残留
+            if (this._activeHitStopFilter) {
+                this.clearHitStopEffects();
+            }
+
             if (invertColor && SceneManager._scene._spriteset) {
-                this._invertFilter.negative(true);
+                // [Fix v4.1] 每次都创建全新的滤镜实例
+                const filter = new PIXI.filters.ColorMatrixFilter();
+                filter.negative(true);
+                this._activeHitStopFilter = filter;
+
                 const stage = SceneManager._scene;
-                if (!stage.filters) stage.filters = [];
-                if (!stage.filters.includes(this._invertFilter)) {
-                    stage.filters = [this._invertFilter];
+                
+                // [Fix v4.1] 使用扩展运算符安全追加滤镜，绝不覆盖已有滤镜
+                if (!stage.filters || !stage.filters.length) {
+                    stage.filters = [filter];
+                } else {
+                    stage.filters = [...stage.filters, filter];
                 }
             }
         }
 
         static clearHitStopEffects() {
             const stage = SceneManager._scene;
-            if (stage.filters) {
-                stage.filters = stage.filters.filter(f => f !== this._invertFilter);
+            // [Fix v4.1] 精确移除当前的滤镜实例
+            if (this._activeHitStopFilter && stage.filters) {
+                stage.filters = stage.filters.filter(f => f !== this._activeHitStopFilter);
+                this._activeHitStopFilter = null;
             }
         }
 
@@ -532,7 +553,7 @@
     };
 
     // ======================================================================
-    // Hook: Game_Action
+    // Hook: Game_Action (捕捉伤害关系)
     // ======================================================================
     const _Game_Action_executeDamage = Game_Action.prototype.executeDamage;
     Game_Action.prototype.executeDamage = function(target, value) {
@@ -742,7 +763,7 @@
         this._effectsContainer.addChild(beam);
     };
 
-    // 0. 识破红框 (接受参数)
+    // 0. 识破红框
     Spriteset_Battle.prototype.createReactionBorder = function(args) {
         const width = Graphics.width;
         const height = Graphics.height;
@@ -810,7 +831,7 @@
         this._effectsContainer.addChild(ghost);
     };
 
-    // 2. 推条重压 (修复版)
+    // 2. 推条重压
     Spriteset_Battle.prototype.createSquash = function(target) {
         const sprite = this.findTargetSprite(target);
         if (!sprite) return;
@@ -848,7 +869,7 @@
         sprite._secSquashTimer = 0;
     };
 
-    // 3. 拉条残影 (修复版)
+    // 3. 拉条残影
     Spriteset_Battle.prototype.createGhostTrail = function(target) {
         const sprite = this.findTargetSprite(target);
         if (!sprite || !sprite.bitmap) return;
@@ -997,7 +1018,9 @@
             }
         };
 
-        this.addChild(sprite); 
+        // [v4.0 Fix] 脸图定位修复：
+        // 挂载到Scene而不是Spriteset，确保不受战斗震动和缩放影响，位置绝对准确。
+        SceneManager._scene.addChild(sprite); 
     };
 
     // 6. 吸血光球 (三阶段：爆发 -> 悬停 -> 吸收)
