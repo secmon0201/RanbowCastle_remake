@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] Boss机制扩展：召唤/状态触发/条件技能 (v1.5 队列召唤/动画支持)
+ * @plugindesc [战斗] Boss机制扩展：召唤/状态触发/条件技能 (v1.6 召唤图层优化)
  * @author Secmon (Mechanics)
  * @base Sec_BattleSystemInstance
  * @orderAfter Sec_BattleSystemInstance
@@ -8,15 +8,16 @@
  *
  * @help
  * ============================================================================
- * Sec_BossMechanics.js (v1.5)
+ * Sec_BossMechanics.js (v1.6)
  * ============================================================================
  * 这是一个专为 Boss 设计的机制扩展插件。
  * 需放置在 Sec_BattleSystemInstance 和 Sec_BattleVisuals 之间。
  *
- * 【更新日志 v1.5】
- * 1. [新增] 召唤队列系统：敌人现在会一个接一个地出现，而不是同时出现。
- * 2. [新增] 召唤动画支持：可以在备注中指定召唤时播放的动画ID。
- * 3. [新增] 召唤间隔参数。
+ * 【更新日志 v1.6】
+ * 1. [优化] 召唤位置 Y 轴逻辑调整：
+ * 为了保证遮挡关系正确（新召唤的单位图层在旧单位之上），
+ * 新召唤的单位现在永远位于召唤者（Boss）的下方（Y轴更大）。
+ * SummonRangeY 现在代表向下的随机偏移量。
  *
  * 【功能说明】
  *
@@ -74,8 +75,8 @@
  *
  * @param SummonRangeY
  * @parent ---Summon Settings---
- * @text 垂直浮动范围
- * @desc 召唤物在 Y 轴上的随机偏移范围（上下各一半）。
+ * @text 向下随机范围
+ * @desc 召唤物在 Y 轴上相对于召唤者的向下随机偏移量（保证图层在召唤者之上）。
  * @type number
  * @default 60
  *
@@ -241,7 +242,7 @@
         this.secTriggerSummonPassive(enemy);
     };
 
-    // 计算位置
+    // 计算位置 (左右交替 + 距离递增 + 仅向下偏移)
     Game_Troop.prototype.calcSummonPos = function(summoner) {
         if (typeof summoner._secSummonCount === 'undefined') {
             summoner._secSummonCount = 0;
@@ -249,13 +250,16 @@
         summoner._secSummonCount++;
         
         const count = summoner._secSummonCount;
-        const dir = (count % 2 !== 0) ? -1 : 1; // 左/右
+        // 左右交替 (-1, 1, -1, 1...)
+        const dir = (count % 2 !== 0) ? -1 : 1; 
+        // 距离递增
         const dist = SUMMON_DIST_X + (count - 1) * SUMMON_DIST_STEP;
 
         const center = getBattlerPos(summoner);
         
         let x = center.x + dir * dist;
-        let y = center.y + (Math.random() - 0.5) * SUMMON_RANGE_Y;
+        // [v1.6] 仅向下偏移 (保证召唤物在 Boss 前面/下方)
+        let y = center.y + Math.random() * SUMMON_RANGE_Y;
 
         x = x.clamp(50, Graphics.boxWidth - 50);
         y = y.clamp(100, Graphics.boxHeight - 50);
