@@ -1,14 +1,18 @@
 /*:
  * @target MZ
  * @plugindesc [系统] 自动获取物品提示 & 手动弹窗指令 & 独立开关音效
- * @author 神枪手
+ * @author 神枪手 (Fix by Gemini)
  *
  * @help
  * ============================================================================
- * ✦ J2ME Notification Ultimate (v2.4 Sound Control) ✦
+ * ✦ J2ME Notification Ultimate (v2.5 Fix) ✦
  * ============================================================================
  * 这是一个集成了“自动化监听”与“手动自定义”功能的完全体插件。
  * 风格复刻自J2ME老手机游戏（居中、紧凑、系统原生样式）。
+ *
+ * [v2.5 修复]
+ * 修复了在弹窗显示期间按下菜单键（X/Esc）会导致游戏卡死/无法移动的严重BUG。
+ * 原理：在弹窗显示期间，暂时禁止呼出主菜单。
  *
  * [v2.4 更新]
  * 1. 新增 [关闭音效] 控制。
@@ -235,6 +239,19 @@
     Game_Player.prototype.canMove = function() {
         if ($gameSystem.isJ2MEWindowActive()) return false;
         return _Game_Player_canMove.call(this);
+    };
+
+    //-----------------------------------------------------------------------------
+    // Scene_Map (关键修复：菜单锁定)
+    // 修复说明：当弹窗激活时，禁止呼出主菜单，防止状态卡死
+    //-----------------------------------------------------------------------------
+    const _Scene_Map_isMenuEnabled = Scene_Map.prototype.isMenuEnabled;
+    Scene_Map.prototype.isMenuEnabled = function() {
+        // 如果J2ME窗口正在活动，禁止打开菜单
+        if ($gameSystem.isJ2MEWindowActive()) {
+            return false;
+        }
+        return _Scene_Map_isMenuEnabled.call(this);
     };
 
     //-----------------------------------------------------------------------------
