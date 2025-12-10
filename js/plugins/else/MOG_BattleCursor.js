@@ -855,5 +855,39 @@
         }
         this.updateTarget(targetData);
     };
+// =============================================================================
+    // ■■■ 兼容补丁: Sec_BossMechanics 召唤兽光标修复 ■■■
+    // =============================================================================
+    
+    // 检测是否存在 Sec 插件的添加敌人函数
+    if (Spriteset_Battle.prototype.secAddEnemy) {
+        
+        const _mog_sec_hook_secAddEnemy = Spriteset_Battle.prototype.secAddEnemy;
+        
+        Spriteset_Battle.prototype.secAddEnemy = function(enemy) {
+            // 1. 先执行 Sec 原本的生成敌人图片逻辑
+            _mog_sec_hook_secAddEnemy.call(this, enemy);
+
+            // 2. 在 _enemySprites 数组中找到刚刚生成的那个敌人精灵
+            // (Sec插件会将新精灵 push 到这个数组里)
+            const newEnemySprite = this._enemySprites.find(sprite => sprite._battler === enemy);
+
+            // 3. 如果找到了精灵，并且光标层(_sprtField2)存在，就手动给它发一个光标
+            if (newEnemySprite && this._sprtField2) {
+                // BattleCursorSprite 是 MOG 插件里定义的类
+                const cursorSprite = new BattleCursorSprite(this, newEnemySprite);
+                
+                // 设置层级 (MOG 默认为 5)
+                cursorSprite.z = 5;
+                
+                // 把光标加入到专门的层级中
+                this._sprtField2.addChild(cursorSprite);
+                
+                // 立即刷新一次，防止第一帧坐标归零 (0,0)
+                cursorSprite.update();
+            }
+        };
+    }
+    // =============================================================================
 
 })();

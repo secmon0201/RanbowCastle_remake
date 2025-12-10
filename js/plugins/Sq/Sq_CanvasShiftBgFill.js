@@ -1,215 +1,398 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 手机端分辨率适配 & 居中问题修复 & 样式注入
- * @author 神枪手
+ * @plugindesc [系统+界面] 竖屏J2ME专用 - 强制布局/全屏修复/边框美化 (二合一终极版)
+ * @author 神枪手 & Gemini Fix
  *
  * @help
  * ============================================================================
- * 移动端显示问题修复说明 (适配 480x854)
+ * 📱 混合功能说明 (Hybrid Features)
  * ============================================================================
- * 若在手机端使用时发现画面依然居中或顶部存在黑边，请按以下步骤排查：
- * 1. 确保插件参数中的「锚点模式」已选择 "顶部对齐 (Top)"
- * 2. 本版本采用CSS !important语法强制定位，优先级最高
- * 3. 自动清除body元素的margin和padding，避免额外间距影响
+ * 这个插件完美合并了“手机端强制布局”和“动态边框修正”两个功能。
+ * * 1. 布局模式 (Anchor)：
+ * 你可以再次选择让游戏画面【顶部对齐】、【垂直居中】或【底部对齐】。
+ * 这对于竖屏游戏非常重要，推荐使用 Top (顶部对齐) 并配合 OffsetY。
+ * * 2. 边框修正 (Border Calibration)：
+ * 保留了新版的四向独立修正。如果全屏后发现边框没对齐，
+ * 调整下方的 AdjustLeft/Right/Top/Bottom 参数即可。
  *
  * ============================================================================
+ * 参数设置
+ * ============================================================================
+ *
+ * @param --- Layout ---
+ * @text [布局与屏幕]
  *
  * @param AnchorMode
+ * @parent --- Layout ---
  * @text 画布停靠位置
  * @type select
- * @option 顶部对齐 (Top) - 手游推荐
+ * @option 顶部对齐 (Top) - 推荐
  * @value top
  * @option 垂直居中 (Center)
  * @value center
  * @option 底部对齐 (Bottom)
  * @value bottom
- * @desc 手机端请务必选择 Top。
+ * @desc 手机端推荐 Top。
  * @default top
  *
  * @param OffsetY
- * @text 顶部偏移 (避让刘海)
+ * @parent --- Layout ---
+ * @text 顶部偏移 (像素)
  * @type number
  * @min 0
  * @max 200
- * @desc 仅在顶部对齐时有效。例如 50 可以让画面下移 50 像素避开摄像头。
+ * @desc 仅在 Top 模式下有效。用于避开手机摄像头的遮挡。
  * @default 0
  *
+ * @param --- Border ---
+ * @text [边框设置]
+ *
+ * @param EnableBorder
+ * @parent --- Border ---
+ * @text 启用边框
+ * @type boolean
+ * @default true
+ *
+ * @param BorderWidth
+ * @parent --- Border ---
+ * @text 边框粗细
+ * @desc 视觉厚度(px)。建议 20-24。
+ * @type number
+ * @min 0
+ * @default 22
+ *
+ * @param WindowSkinFile
+ * @parent --- Border ---
+ * @text 窗口皮肤
+ * @type file
+ * @dir img/system/
+ * @default Window
+ *
+ * @param --- Background ---
+ * @text [背景设置]
+ *
+ * @param EnableBackground
+ * @parent --- Background ---
+ * @text 启用背景
+ * @type boolean
+ * @default true
+ *
  * @param BackgroundImage
+ * @parent --- Background ---
  * @text 背景图片
+ * @desc img/pictures/ 下的文件名。
  * @type file
  * @dir img/pictures/
- * @desc 填充黑边的图片 (建议尺寸 1080x2400 或更大以覆盖所有机型)。
- * @default
  *
- * @param BackgroundMode
- * @text 图片填充模式
- * @type select
- * @option cover (铺满-保持比例裁切)
- * @value cover
- * @option contain (完整-可能留白)
- * @value contain
- * @default cover
+ * @param BackgroundColor
+ * @parent --- Background ---
+ * @text 背景颜色
+ * @default #111111
+ * * @param --- Calibration ---
+ * @text [边框四向微调]
+ * @desc 如果边框和画面有缝隙，调整这里。
+ *
+ * @param AdjustLeft
+ * @parent --- Calibration ---
+ * @text 修正：左边框
+ * @desc 正数向右移，负数向左移。
+ * @type number
+ * @min -50
+ * @max 50
+ * @default 0
+ *
+ * @param AdjustRight
+ * @parent --- Calibration ---
+ * @text 修正：右边框
+ * @desc 正数向右移，负数向左移。
+ * @type number
+ * @min -50
+ * @max 50
+ * @default 0
+ *
+ * @param AdjustTop
+ * @parent --- Calibration ---
+ * @text 修正：上边框
+ * @desc 正数向下移，负数向上移。
+ * @type number
+ * @min -50
+ * @max 50
+ * @default 0
+ *
+ * @param AdjustBottom
+ * @parent --- Calibration ---
+ * @text 修正：下边框
+ * @desc 正数向下移，负数向上移。
+ * @type number
+ * @min -50
+ * @max 50
+ * @default 0
  */
 
 (() => {
     'use strict';
 
-    const PLUGIN_NAME = document.currentScript.src.split("/").pop().replace(".js", "");
-    
-    // 🔥 核心修改：分辨率适配 480x854
-    const FIXED_W = 480;
-    const FIXED_H = 854; 
-    
-    const params = PluginManager.parameters(PLUGIN_NAME);
+    const pluginName = "Sq_CanvasShiftBgFill"; // 保持一致的文件名以便读取参数
+    const params = PluginManager.parameters(pluginName);
 
+    // --- 核心分辨率设定 (J2ME竖屏比例) ---
+    const FIXED_W = 480;
+    const FIXED_H = 854;
+
+    // --- 参数读取 ---
     const Config = {
         anchor: params['AnchorMode'] || 'top',
         offsetY: Number(params['OffsetY'] || 0),
+        
+        enableBorder: params['EnableBorder'] === 'true',
+        borderWidth: Number(params['BorderWidth'] || 22),
+        skinFileName: params['WindowSkinFile'] || "Window",
+        
+        enableBg: params['EnableBackground'] === 'true',
         bgImage: params['BackgroundImage'] || '',
-        bgMode: params['BackgroundMode'] || 'cover'
+        bgColor: params['BackgroundColor'] || '#111111',
+
+        adjL: Number(params['AdjustLeft'] || 0),
+        adjR: Number(params['AdjustRight'] || 0),
+        adjT: Number(params['AdjustTop'] || 0),
+        adjB: Number(params['AdjustBottom'] || 0)
     };
 
     //=============================================================================
-    // 1. CSS 强力注入器 (专门解决移动端居中顽疾)
+    // 模块 1: Viewport 修复 (解决手机刘海屏黑边)
+    //=============================================================================
+    const ViewportFixer = {
+        init() {
+            let meta = document.querySelector('meta[name="viewport"]');
+            if (!meta) {
+                meta = document.createElement('meta');
+                meta.name = 'viewport';
+                document.head.appendChild(meta);
+            }
+            let content = meta.content || "width=device-width, user-scalable=no";
+            if (!content.includes('viewport-fit=cover')) {
+                meta.content = `${content}, viewport-fit=cover`;
+            }
+        }
+    };
+
+    //=============================================================================
+    // 模块 2: CSS 注入 (强制全屏容器)
     //=============================================================================
     const CSSInjector = {
         init() {
-            // 防止重复注入
             if (document.getElementById('force-mobile-layout-css')) return;
-
             const style = document.createElement('style');
             style.type = 'text/css';
             style.id = 'force-mobile-layout-css';
-            
-            // 计算顶部距离
-            const topVal = (Config.anchor === 'top') ? `${Config.offsetY}px` : 'auto';
-            
-            // 构建强制 CSS
-            const css = `
-                body {
+            style.innerHTML = `
+                html, body {
                     margin: 0 !important;
                     padding: 0 !important;
-                    display: block !important; /* 禁止 Flex 居中 */
-                    overflow: hidden !important;
+                    width: 100% !important;
+                    height: 100% !important;
                     background-color: #000;
-                    width: 100vw;
-                    height: 100vh;
+                    overflow: hidden !important;
+                    -webkit-user-select: none;
+                    -webkit-tap-highlight-color: transparent;
                 }
                 canvas#gameCanvas {
-                    margin: 0 !important; /* 禁止 auto 居中 */
-                    padding: 0 !important;
                     position: absolute !important;
-                    transform-origin: 0 0 !important; /* 防止旋转锚点错误 */
                     display: block !important;
-                    ${Config.anchor === 'top' ? `top: ${topVal} !important; bottom: auto !important;` : ''}
-                    ${Config.anchor === 'bottom' ? `bottom: 0 !important; top: auto !important;` : ''}
-                    z-index: 10; /* 确保画布在背景图之上 */
-                    /* 优化渲染清晰度 */
+                    margin: 0 !important;
+                    z-index: 10;
                     image-rendering: -webkit-optimize-contrast;
-                }
-                #fixed-bg-layer {
-                    position: fixed !important;
-                    top: 0; left: 0;
-                    width: 100vw; height: 100vh;
-                    z-index: 0; /* 确保背景在最底层 */
-                    pointer-events: none;
+                    /* 初始设为透明，避免闪烁 */
+                    background-color: transparent !important; 
                 }
             `;
-            style.innerHTML = css;
             document.head.appendChild(style);
         }
     };
 
     //=============================================================================
-    // 2. 布局计算 (Layout Engine)
+    // 模块 3: 布局引擎 (计算画布位置 Anchor)
     //=============================================================================
     const LayoutEngine = {
         update(canvas) {
             const sw = window.innerWidth;
             const sh = window.innerHeight;
 
-            // 1. 缩放计算：确保 480x854 能够完整放入屏幕
+            // 计算缩放比，保持 FIXED_W / FIXED_H 比例
             const scale = Math.min(sw / FIXED_W, sh / FIXED_H);
             
-            // 优化：使用 floor 取整防止子像素渲染导致的模糊
             const realW = Math.floor(FIXED_W * scale);
             const realH = Math.floor(FIXED_H * scale);
-
-            // 2. X轴永远居中
             const left = Math.floor((sw - realW) / 2);
 
-            // 3. Y轴 JS 计算 (作为 CSS 的补充)
             let top = 0;
             if (Config.anchor === 'center') {
                 top = Math.floor((sh - realH) / 2);
             } else if (Config.anchor === 'bottom') {
                 top = sh - realH;
             } else {
-                // Top 模式
+                // Top
                 top = Config.offsetY;
             }
 
-            // 4. 应用样式
+            // 应用样式
             canvas.style.width = `${realW}px`;
             canvas.style.height = `${realH}px`;
             canvas.style.left = `${left}px`;
-            
-            // 只有在非 Top 模式或者需要动态计算时，JS 的 top 才起作用
-            // CSS 的 !important 优先级高于此处，但此处赋值可作为 fallback
             canvas.style.top = `${top}px`; 
             
-            // 更新系统 Scale，修正点击
+            // 更新 RPG Maker 内部缩放变量
             Graphics._scale = scale;
+        },
+
+        // 获取当前画布的实际位置信息，供边框使用
+        getRect() {
+            const canvas = document.getElementById('gameCanvas');
+            if (!canvas) return { left:0, top:0, width:0, height:0 };
+            return canvas.getBoundingClientRect();
         }
     };
 
     //=============================================================================
-    // 3. 背景管理
+    // 模块 4: 背景与边框管理器 (Border & Background)
     //=============================================================================
-    const BGManager = {
+    class DecorationManager {
+        constructor() {
+            this._bgDiv = null;
+            this._borderDiv = null;
+            this._skinBitmap = null;
+            this._borderDataUrl = null;
+            this._isReady = false;
+        }
+
         init() {
-            if (!Config.bgImage) return;
-            // 防止重复创建
-            if (document.getElementById('fixed-bg-layer')) return;
-
-            const div = document.createElement('div');
-            div.id = 'fixed-bg-layer';
-            const url = `img/pictures/${Config.bgImage}`;
-            const src = url.includes('.') ? url : url + '.png';
-            
-            Object.assign(div.style, {
-                backgroundImage: `url('${src}')`,
-                backgroundSize: Config.bgMode,
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
-            });
-            
-            document.body.appendChild(div);
-            // 强制 canvas 透明
-            if (Graphics._canvas) Graphics._canvas.style.backgroundColor = 'transparent';
+            this.setupBackground();
+            if (Config.enableBorder) {
+                this.loadWindowSkin();
+            } else {
+                this._isReady = true; // 无需边框则直接视为就绪
+            }
         }
-    };
+
+        setupBackground() {
+            if (!Config.enableBg) return;
+            if (document.getElementById('Sq_GameBackground')) return;
+
+            this._bgDiv = document.createElement('div');
+            this._bgDiv.id = 'Sq_GameBackground';
+            const s = this._bgDiv.style;
+            s.position = 'fixed';
+            s.top = '0'; left: '0';
+            s.width = '100vw'; s.height = '100vh';
+            s.zIndex = '0'; // 在 Canvas(10) 之下
+            s.backgroundColor = Config.bgColor;
+            s.pointerEvents = 'none';
+
+            if (Config.bgImage) {
+                const url = `img/pictures/${Config.bgImage}`;
+                const src = url.includes('.') ? url : url + '.png';
+                s.backgroundImage = `url('${src}')`;
+                s.backgroundPosition = 'center';
+                s.backgroundRepeat = 'no-repeat';
+                s.backgroundSize = 'cover';
+            }
+            document.body.appendChild(this._bgDiv);
+        }
+
+        loadWindowSkin() {
+            this._skinBitmap = ImageManager.loadSystem(Config.skinFileName);
+            this._skinBitmap.addLoadListener(this.processWindowSkin.bind(this));
+        }
+
+        processWindowSkin() {
+            const frameW = 96; const frameH = 96;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = frameW; tempCanvas.height = frameH;
+            const ctx = tempCanvas.getContext('2d');
+            const image = this._skinBitmap.image;
+            if (!image) return;
+
+            // 提取 Window.png 的边框部分 (通常在右侧 96,0)
+            ctx.drawImage(image, 96, 0, frameW, frameH, 0, 0, frameW, frameH);
+            // 挖空中间
+            ctx.clearRect(24, 24, 48, 48);
+
+            this._borderDataUrl = tempCanvas.toDataURL();
+            this.createBorderElement();
+        }
+
+        createBorderElement() {
+            if (document.getElementById('Sq_GameBorder')) return;
+            this._borderDiv = document.createElement('div');
+            this._borderDiv.id = 'Sq_GameBorder';
+            
+            const s = this._borderDiv.style;
+            s.position = 'fixed';
+            s.pointerEvents = 'none'; // 点击穿透
+            s.zIndex = '20'; // 在 Canvas(10) 之上
+            s.borderStyle = 'solid';
+            s.borderWidth = `${Config.borderWidth}px`;
+            s.borderImageSource = `url(${this._borderDataUrl})`;
+            s.borderImageSlice = '24 fill'; 
+            s.borderImageRepeat = 'stretch';
+            s.boxSizing = 'border-box'; 
+
+            document.body.appendChild(this._borderDiv);
+            this._isReady = true;
+            this.syncBorder();
+        }
+
+        syncBorder() {
+            // 将边框吸附到 Canvas 上
+            if (!this._borderDiv) return;
+            
+            const rect = LayoutEngine.getRect();
+            const s = this._borderDiv.style;
+            const bw = Config.borderWidth;
+
+            // --- 四向独立修正算法 ---
+            
+            // 计算 Left / Top
+            const finalLeft = rect.left - bw + Config.adjL;
+            const finalTop = rect.top - bw + Config.adjT;
+
+            // 计算 Width / Height
+            // 逻辑：理想宽度(包含边框) - 左修正 + 右修正
+            const idealWidth = rect.width + (bw * 2);
+            const idealHeight = rect.height + (bw * 2);
+
+            const finalWidth = idealWidth - Config.adjL + Config.adjR;
+            const finalHeight = idealHeight - Config.adjT + Config.adjB;
+
+            s.width = `${Math.max(0, finalWidth)}px`;
+            s.height = `${Math.max(0, finalHeight)}px`;
+            s.left = `${finalLeft}px`;
+            s.top = `${finalTop}px`;
+        }
+    }
+
+    const decorationManager = new DecorationManager();
 
     //=============================================================================
-    // 4. 系统挂钩 (Hook)
+    // 模块 5: 系统挂钩 (Main Hooks)
     //=============================================================================
     
-    // 游戏启动时注入 CSS
     const _SceneManager_run = SceneManager.run;
     SceneManager.run = function(sceneClass) {
         _SceneManager_run.call(this, sceneClass);
-        CSSInjector.init(); // <--- 关键：注入强制样式
-        BGManager.init();
+        ViewportFixer.init();
+        CSSInjector.init();
+        decorationManager.init();
     };
 
-    // 每帧刷新布局
     const _Graphics_updateCanvas = Graphics._updateCanvas;
     Graphics._updateCanvas = function() {
         _Graphics_updateCanvas.call(this);
         if (this._canvas) {
+            // 1. 先强制移动 Canvas
             LayoutEngine.update(this._canvas);
-            // 再次确保透明，防止被重置
-            this._canvas.style.backgroundColor = 'transparent';
+            // 2. 再让边框跟随 Canvas
+            decorationManager.syncBorder();
         }
     };
     
@@ -220,9 +403,9 @@
     };
 
     //=============================================================================
-    // 5. 触控修正 (Touch Fix)
+    // 模块 6: 触控修正 (Touch Input Fix)
+    // 必须保留，因为我们在手动移动 Canvas，默认的点击坐标会不准。
     //=============================================================================
-    // 强制使用 getBoundingClientRect 获取真实坐标，无视系统原来的偏移计算
     TouchInput._convertToGamePos = function(clientX, clientY) {
         const canvas = Graphics._canvas;
         if (!canvas) return;
@@ -232,6 +415,7 @@
         this._realY = Math.floor((clientY - rect.top) / scale);
     };
 
+    // 覆盖 MZ 的触摸事件处理，确保使用修正后的坐标
     const _TouchInput_onTouchStart = TouchInput._onTouchStart;
     TouchInput._onTouchStart = function(event) {
         _TouchInput_onTouchStart.call(this, event);
@@ -250,7 +434,6 @@
         this._y = this._realY;
     };
 
-    // 兼容鼠标
     const _TouchInput_onMouseMove = TouchInput._onMouseMove;
     TouchInput._onMouseMove = function(event) {
         _TouchInput_onMouseMove.call(this, event);
