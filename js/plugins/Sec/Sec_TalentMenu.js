@@ -1,48 +1,47 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 天赋菜单系统 & SP管理 & 原版风格修复
- * @author Secmon
- * @version 1.1.0 (Style Revert)
+ * @plugindesc [系统] 天赋菜单系统 - 完美重置版 (Sort Order Fix v1.9.2)
+ * @author Secmon & Gemini
+ * @version 1.9.2
+ *
  * @help
  * ============================================================================
- * 更新日志 (v1.1.0)
+ * 🌈 彩虹城堡完美重置版 - 天赋菜单专属 UI (v1.9.2)
  * ============================================================================
- * 1. 【样式恢复】：完全恢复了 RPG Maker MZ 默认的窗口外观（带边框和背景）。
- * 去掉了之前版本强制透明和深色背景的改动。
- * 2. 【重叠修复】：保留了智能排版逻辑。
- * 技能列表现在会自动计算宽度：[图标 技能名...] [SP消耗] [状态]
- * 确保文字绝对不会重叠。
- * 3. 【布局优化】：
- * - 顶部窗口现在 Y=0 绝对顶格。
- * - 移除了窗口之间多余的空隙，使它们紧凑排列。
- * * ============================================================================
- * 功能说明
+ * * 【本次更新】：
+ * 1. 自定义菜单位置：
+ * - 增加了参数 [插入位置]，你可以自由决定“天赋”按钮出现在哪里。
+ * - 默认设定为：出现在 [技能] 选项的下方。
+ * * 【历史修复】：
+ * - 包含 v1.9.1 及之前所有的 UI 美化、防重叠、逻辑修复。
+ *
  * ============================================================================
- * * 1. **天赋SP系统**：
- * - 为角色添加独立的SP（天赋点数）上限。
- * - 技能消耗SP，只有SP足够时才能启用。
- * * 2. **主菜单扩展**：
- * - 主菜单添加"天赋"选项。
- * - 四窗口布局：描述(顶)、信息(左)、列表(右)、进度条(底)。
- * * ============================================================================
- * 脚本调用 & 备注 (保持不变)
- * ============================================================================
- * 角色备注: <spMax:150>
- * 技能备注: <spCost:10>
- * 脚本: $gameActors.actor(1).setSpMax(200);
- * * @param CommandName
+ * @param CommandName
  * @text 菜单命令名称
- * @desc 主菜单中"天赋"选项的显示名称
  * @default 天赋
- * * @param MaxColumns
- * @text 每行技能数量
- * @desc 天赋技能列表中每行显示的技能数量
+ * * @param InsertTarget
+ * @text 插入位置
+ * @desc 将天赋选项插入到哪个选项的【后面】？
+ * @type select
+ * @option 物品 (Item) 后面
+ * @value item
+ * @option 技能 (Skill) 后面
+ * @value skill
+ * @option 装备 (Equip) 后面
+ * @value equip
+ * @option 状态 (Status) 后面
+ * @value status
+ * @option 放在最底部
+ * @value bottom
+ * @default skill
+ *
+ * @param MaxColumns
+ * @text 列表列数
  * @type number
- * @min 1
  * @default 1
- * * @param DefaultSpMax
+ *
+ * @param DefaultSpMax
  * @text 默认SP上限
- * @desc 所有角色的默认初始SP上限
  * @type number
  * @default 100
  */
@@ -50,15 +49,19 @@
 (() => {
     const pluginName = "Sec_TalentMenu";
     const params = PluginManager.parameters(pluginName);
-
+    
     const cmdName = params.CommandName || "天赋";
+    const insertTarget = params.InsertTarget || "skill"; // 获取插入位置参数
     const maxColumns = Number(params.MaxColumns) || 1; 
     const defaultSpMax = Number(params.DefaultSpMax) || 100;
 
-    const SPICON = ImageManager.loadBitmap("img/rainbow/", "spicon");
+    // 属性图标配置
+    const ICONS = {
+        ATK: 76, DEF: 81, MAT: 64, MDF: 65, AGI: 82, LUK: 84
+    };
 
     // ==============================================================================
-    // 模块 1: Game_Actor 扩展 (数据核心 - 保持原样)
+    // 模块 1: 核心数据逻辑 (Game_Actor)
     // ==============================================================================
     const _Game_Actor_initialize = Game_Actor.prototype.initialize;
     Game_Actor.prototype.initialize = function(actorId) {
@@ -109,8 +112,7 @@
         const current = this._skillStates[skillId] || false;
         const target = !current;
         const cost = this.getSpCost(skillId);
-        const currentTotal = this.totalSpUsed();
-        if (target && (currentTotal + cost) > this._spMax) {
+        if (target && (this.totalSpUsed() + cost) > this._spMax) {
             SoundManager.playBuzzer();
             return false;
         }
@@ -119,9 +121,7 @@
     };
 
     Game_Actor.prototype.isSkillEnabled = function(skillId) {
-        if (this._skillStates[skillId] === undefined) {
-            this._skillStates[skillId] = false;
-        }
+        if (this._skillStates[skillId] === undefined) this._skillStates[skillId] = false;
         return this._skillStates[skillId];
     };
 
@@ -131,80 +131,29 @@
 
     const _Game_Actor_skills = Game_Actor.prototype.skills;
     Game_Actor.prototype.skills = function() {
-        return _Game_Actor_skills.call(this).filter(skill =>
-            this.isSkillEnabled(skill.id)
-        );
-    };
-
-    Game_Actor.prototype.setSpMax = function(newMax) {
-        if (newMax > 0) {
-            this._spMax = newMax;
-            if (SceneManager._scene instanceof Scene_Menu && SceneManager._scene._actorInfoWindow) {
-                SceneManager._scene._actorInfoWindow.refresh();
-            }
-        }
-    };
-
-    Game_Actor.prototype.initSkillStates = function() {
-        this.allSkills().forEach(skill => {
-            this._skillStates[skill.id] = false;
-        });
-        if (SceneManager._scene instanceof Scene_Menu && SceneManager._scene._talentListWindow) {
-            SceneManager._scene._talentListWindow.refresh();
-        }
-    };
-
-    Game_Actor.prototype.enableSkill = function(skillId) {
-        if (!$dataSkills[skillId]) return false;
-        if (!this._skills.includes(skillId)) return false;
-        this._skillStates[skillId] = true;
-        if (SceneManager._scene instanceof Scene_Menu && SceneManager._scene._talentListWindow) {
-            SceneManager._scene._talentListWindow.refresh();
-        }
-        return true;
-    };
-
-    Game_Actor.prototype.enableSkills = function(skillIds) {
-        if (!Array.isArray(skillIds)) return 0;
-        let successCount = 0;
-        skillIds.forEach(skillId => {
-            if (this.enableSkill(skillId)) successCount++;
-        });
-        return successCount;
+        return _Game_Actor_skills.call(this).filter(skill => this.isSkillEnabled(skill.id));
     };
 
     // ==============================================================================
-    // 模块 2: 自定义窗口 (Windows) - 恢复原版样式但保留布局修复
+    // 模块 2: UI 绘制基类 & 组件
     // ==============================================================================
 
-    Window_Base.prototype.drawBox = function(x, y, width, height, style) {
-        // 原版风格的内部方框逻辑
-        this.contents.fillRect(x, y, width, height, style.bgColor);
-        this.contents.penWidth = style.borderWidth;
-        this.contents.strokeRect(
-            x + style.borderWidth/2,
-            y + style.borderWidth/2,
-            width - style.borderWidth,
-            height - style.borderWidth,
-            style.borderColor
-        );
-        this.contents.penWidth = 1;
-    };
-
-    // 1. 顶部窗口：技能描述窗口
-    class Window_SkillDescription extends Window_Base {
-        constructor(rect) {
-            super(rect);
-            // 【已恢复】移除 opacity=0，保留原版窗口背景
-            this._skill = null;
-            this._boxStyle = {
-                borderColor: ColorManager.dimColor1(),
-                borderWidth: 2,
-                bgColor: "rgba(0, 0, 0, 0.1)" // 恢复较浅的背景色
-            };
-            this.refresh();
+    class Window_TalentBase extends Window_Base {
+        initialize(rect) {
+            super.initialize(rect);
+            this.loadWindowskin();
+            this.backOpacity = 255; 
+            this.opacity = 255;
+            this.padding = 12;
         }
 
+        loadWindowskin() {
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
+        }
+    }
+
+    // 1. 顶部：技能描述
+    class Window_SkillDescription extends Window_TalentBase {
         setSkill(skill) {
             this._skill = skill;
             this.refresh();
@@ -213,107 +162,176 @@
         refresh() {
             this.contents.clear();
             if (!this._skill) return;
-
-            const padding = 4;
-            const textWidth = this.contents.width - padding * 2;
-
-            // 保留内部画框，因为原本插件就有
-            this.drawBox(
-                0,
-                0,
-                this.contents.width,
-                this.contents.height,
-                this._boxStyle
-            );
-
-            this.resetTextColor();
-            this.drawTextEx(this._skill.description, padding * 2, padding, textWidth);
+            
+            let text = this._skill.meta.skillStory || this._skill.description;
+            this.resetFontSettings();
+            this.contents.fontSize = 22; 
+            
+            if (this._skill.meta.skillStory) {
+                this.changeTextColor("#FFD700");
+            } else {
+                this.resetTextColor();
+            }
+            this.drawTextEx(text, 12, 12, this.innerWidth - 24);
         }
     }
 
-    // 2. 左侧窗口：角色信息窗口
-    class Window_ActorInfo extends Window_StatusBase {
-        constructor(rect) {
-            super(rect);
-            this._actor = null;
-            this._defaultFontSize = $gameSystem.mainFontSize();
-            this._boxStyle = {
-                borderColor: ColorManager.dimColor1(),
-                borderWidth: 2,
-                bgColor: "rgba(0, 0, 0, 0.1)" // 恢复较浅的背景色
-            };
-        }
+    // 2. 左侧：角色信息窗口
+    class Window_ActorInfo extends Window_TalentBase {
         setActor(actor) {
             this._actor = actor;
             this.refresh();
         }
+        
+        drawFaceFrame(x, y, s) {
+            this.contents.fillRect(x, y, s, s, "rgba(0, 0, 0, 0.5)");
+            this.contents.strokeRect(x, y, s, s, "rgba(255, 215, 0, 0.9)");
+            this.contents.strokeRect(x - 1, y - 1, s + 2, s + 2, "rgba(0, 0, 0, 0.6)");
+            this.contents.strokeRect(x + 2, y + 2, s - 4, s - 4, "rgba(255, 255, 255, 0.1)"); 
+        }
+
         refresh() {
             this.contents.clear();
             if (!this._actor) return;
-            const lineHeight = this.lineHeight();
-            const centerX = this.contents.width / 2;
-            const boxMargin = 4; // 稍微紧凑一点
-            const boxWidth = this.contents.width - boxMargin * 2;
-            let currentY = boxMargin;
 
-            // 1. 头像框
-            const faceBoxHeight = 144;
-            this.drawBox(boxMargin, currentY, boxWidth, faceBoxHeight, this._boxStyle);
-            this.drawActorFace(this._actor, centerX - 64, currentY + (faceBoxHeight - 144)/2, 144, 144);
-            currentY += faceBoxHeight + boxMargin;
+            const width = this.innerWidth;
+            const cx = width / 2;
+            let cy = 8;
 
-            // 通用行
-            const drawRow = (text) => {
-                const h = lineHeight + 8;
-                this.drawBox(boxMargin, currentY, boxWidth, h, this._boxStyle);
-                this.drawText(text, boxMargin + 4, currentY + 4, boxWidth - 8, "center");
-                currentY += h + boxMargin;
-            };
+            // --- 区域 1: 头像 ---
+            const faceSize = 110; 
+            this.drawFaceFrame(cx - faceSize/2, cy, faceSize);
+            this.drawFace(this._actor.faceName(), this._actor.faceIndex(), cx - faceSize/2, cy, faceSize, faceSize);
+            cy += faceSize + 12;
 
-            // 2-6. 各项信息
-            drawRow(this._actor.name());
-            drawRow(`职业: ${this._actor.currentClass().name}`);
+            // --- 区域 2: 名字 ---
+            this.contents.fontSize = 26;
+            this.contents.fontBold = true;
+            this.changeTextColor("#FFD700");
+            this.drawText(this._actor.name(), 0, cy, width, "center");
+            cy += 36;
+            this.contents.fontBold = false;
+
+            // --- 区域 3: 等级职业 ---
+            const classText = `Lv.${this._actor.level} ${this._actor.currentClass().name}`;
+            this.contents.fontSize = 18;
+            this.changeTextColor("#00FFFF");
+            this.drawText(classText, 0, cy, width, "center");
+            cy += 32;
+
+            // 分割线
+            this.drawHorzLine(cy);
+            cy += 16;
+
+            // --- 区域 4: SP 能量 ---
+            this.drawSpSection(0, cy, width);
+            cy += 72; 
+
+            // 分割线
+            this.drawHorzLine(cy);
+            cy += 16;
+
+            // --- 区域 5: 属性列表 ---
+            const remainingHeight = this.innerHeight - cy;
+            const listHeight = 6 * 36;
+            let paddingY = 0;
+            if (remainingHeight > listHeight) {
+                paddingY = (remainingHeight - listHeight) / 2;
+            }
+            this.drawStatsList(0, cy + paddingY, width);
+        }
+
+        drawHorzLine(y) {
+            this.contents.fillRect(10, y, this.innerWidth - 20, 2, "rgba(255,255,255,0.2)");
+        }
+
+        drawSpSection(x, y, width) {
+            this.changeTextColor(ColorManager.systemColor());
+            this.contents.fontSize = 18;
+            this.drawText("天赋能量 (SP)", x + 6, y, width);
             
-            const weapons = this._actor.weapons();
-            const wNames = weapons.length > 0 ? 
-                weapons.map(w => $dataSystem.weaponTypes[$dataWeapons[w.id].wtypeId]).join(" ") : "无";
-            drawRow(`武器: ${wNames}`);
+            const barY = y + 36; 
+            const barH = 20; 
+            const used = this._actor.totalSpUsed();
+            const max = this._actor._spMax;
+            const rate = max > 0 ? Math.min(used / max, 1) : 0;
 
-            const armors = this._actor.armors();
-            const aNames = armors.length > 0 ?
-                armors.map(a => $dataSystem.armorTypes[$dataArmors[a.id].atypeId]).join(" ") : "无";
-            drawRow(`防具: ${aNames}`);
+            this.contents.fillRect(x + 4, barY, width - 8, barH, "#111");
+            this.contents.strokeRect(x + 3, barY - 1, width - 6, barH + 2, "#444");
 
-            const spMax = this._actor._spMax || 0;
-            drawRow(`能量阈值: ${spMax}`);
+            const color1 = used > max ? "#ff4444" : "#4d96ff";
+            const color2 = used > max ? "#ff8888" : "#00FFFF";
+            const fillWidth = Math.floor((width - 8) * rate);
+            
+            if (fillWidth > 0) {
+                this.contents.gradientFillRect(x + 4, barY, fillWidth, barH, color1, color2);
+            }
+
+            this.contents.fontSize = 16;
+            this.changeTextColor("#fff");
+            this.drawText(`${used} / ${max}`, x, barY, width, "center");
+        }
+
+        drawStatsList(x, y, width) {
+            const startY = y;
+            const itemH = 36; 
+            
+            const paramsToShow = [
+                { id: 2, icon: ICONS.ATK }, 
+                { id: 3, icon: ICONS.DEF }, 
+                { id: 4, icon: ICONS.MAT }, 
+                { id: 5, icon: ICONS.MDF }, 
+                { id: 6, icon: ICONS.AGI }, 
+                { id: 7, icon: ICONS.LUK }  
+            ];
+
+            for (let i = 0; i < paramsToShow.length; i++) {
+                const p = paramsToShow[i];
+                const py = startY + i * itemH;
+
+                if (i % 2 === 0) {
+                    this.contents.fillRect(x, py, width, itemH, "rgba(255, 255, 255, 0.05)");
+                }
+
+                this.drawIcon(p.icon, x + 8, py + 2);
+
+                const name = TextManager.param(p.id);
+                this.contents.fontSize = 20;
+                this.changeTextColor(ColorManager.systemColor());
+                this.drawText(name, x + 46, py, 120);
+
+                this.resetTextColor();
+                const val = this._actor.param(p.id);
+                this.drawText(val, x, py, width - 12, "right");
+            }
         }
     }
 
-    // 3. 右侧窗口：技能列表窗口 (【保留重叠修复逻辑】)
+    // 3. 右侧：技能列表
     class Window_TalentList extends Window_Selectable {
-        constructor(rect) {
-            super(rect);
-            // 【已恢复】移除 opacity=0，恢复原版列表样式
+        initialize(rect) {
+            super.initialize(rect);
+            this.loadWindowskin();
+            this.backOpacity = 255;
+            this.opacity = 255;
             this._actor = null;
             this._data = [];
         }
 
+        loadWindowskin() {
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
+        }
+
         setActor(actor) {
             this._actor = actor;
             this.refresh();
         }
 
-        maxCols() {
-            return maxColumns;
-        }
+        maxCols() { return maxColumns; }
+        itemHeight() { return 52; } 
 
-        maxItems() {
-            return this._data ? this._data.length : 0;
-        }
-
-        item() {
-            return this._data[this.index()];
-        }
+        maxItems() { return this._data ? this._data.length : 0; }
+        item() { return this._data[this.index()]; }
 
         refresh() {
             this._data = this._actor ? this._actor.allSkills() : [];
@@ -321,141 +339,84 @@
             super.refresh();
         }
 
-        // 重写 drawItem：修复文字重叠，但保持原版无框样式
         drawItem(index) {
             const skill = this._data[index];
             if (!skill) return;
             const rect = this.itemRect(index);
             const enabled = this._actor.isSkillEnabled(skill.id);
+            
+            if (index === this.index()) {
+                const c1 = "rgba(255, 215, 0, 0.2)"; 
+                const c2 = "rgba(0, 0, 0, 0)";
+                this.contents.gradientFillRect(rect.x, rect.y, rect.width, rect.height, c1, c2);
+                this.contents.strokeRect(rect.x, rect.y, rect.width, rect.height, "rgba(255, 215, 0, 0.5)");
+            }
+
+            this.drawIcon(skill.iconIndex, rect.x + 4, rect.y + 10);
+
+            const nameX = rect.x + 42;
+            const nameY = rect.y + 2;
+            
+            this.contents.fontSize = 20;
+            this.contents.fontBold = true;
+            this.changeTextColor(enabled ? "#FFD700" : "#999"); 
+            this.drawText(skill.name, nameX, nameY, 200);
+            this.contents.fontBold = false;
+
             const spCost = this._actor.getSpCost(skill.id);
+            this.contents.fontSize = 16;
+            this.changeTextColor("#54a0ff");
+            this.drawText(`SP: ${spCost}`, nameX, nameY + 24, 100);
 
-            // 1. 计算各项宽度，防止重叠
-            const padding = 4;
-            const iconSize = ImageManager.iconWidth;
-            
-            // 状态文字宽度
-            const statusWidth = this.textWidth("启用") + 10;
-            // SP文字宽度
-            const spTextStr = `SP:${spCost}`;
-            const spWidth = this.textWidth(spTextStr) + 10;
-            
-            // 坐标计算（从右向左布局）
-            const statusX = rect.x + rect.width - statusWidth - padding;
-            const spX = statusX - spWidth - padding;
-            const iconX = rect.x + padding;
-            
-            // 技能名可用宽度 = SP数值左边 - 图标右边 - 间距
-            const nameX = iconX + iconSize + padding;
-            const nameMaxWidth = spX - nameX - padding;
+            const statusText = enabled ? "★已激活" : "○未激活";
+            const statusColor = enabled ? "#6bc547" : "#555";
+            this.changeTextColor(statusColor);
+            this.drawText(statusText, rect.width - 90, rect.y + 12, 80, "right");
+        }
 
-            // 2. 绘制
-            this.changePaintOpacity(true); // 确保不透明
-            this.drawIcon(skill.iconIndex, iconX, rect.y + 2);
-
-            // 绘制技能名
-            this.changeTextColor(enabled ? ColorManager.normalColor() : "#aaaaaa");
-            this.drawText(skill.name, nameX, rect.y, nameMaxWidth, "left");
-
-            // 绘制SP
-            this.changeTextColor(ColorManager.textColor(14)); // 黄色
-            this.drawText(spTextStr, spX, rect.y, spWidth, "right");
-
-            // 绘制状态
-            const statusText = enabled ? "启用" : "关闭";
-            this.changeTextColor(enabled ? ColorManager.systemColor() : "#888888");
-            this.drawText(statusText, statusX, rect.y, statusWidth, "right");
+        select(index) {
+            super.select(index);
+            this.refresh(); 
         }
     }
 
-    // 4. 底部窗口：SP进度条窗口
-    class Window_SpGauge extends Window_Base {
-        constructor(rect) {
-            super(rect);
-            // 【已恢复】移除 opacity=0
-            this._actor = null;
-            this._boxStyle = {
-                borderColor: ColorManager.dimColor1(),
-                borderWidth: 2,
-                bgColor: "rgba(0, 0, 0, 0.1)"
-            };
-            this.refresh();
-        }
-        setActor(actor) {
-            this._actor = actor;
-            this.refresh();
-        }
+    // 4. 底部：页脚
+    class Window_TalentFooter extends Window_TalentBase {
         refresh() {
             this.contents.clear();
-            if (!this._actor) return;
-            
-            // 绘制内部框（保留设计）
-            this.drawBox(
-                0,
-                0,
-                this.contents.width,
-                this.contents.height,
-                this._boxStyle
-            );
-
-            // 绘制SP图标
-            let iconOffset = 0;
-            if (SPICON.isReady()) {
-                const iconSize = 32;
-                this.contents.blt(SPICON, 0, 0, iconSize, iconSize, 12, (this.contents.height - iconSize)/2, iconSize, iconSize);
-                iconOffset = 48;
-            }
-
-            const currentSp = this._actor.totalSpUsed();
-            const maxSp = this._actor._spMax;
-            const rate = maxSp > 0 ? currentSp / maxSp : 0;
-
-            const padding = 12;
-            const gaugeHeight = 12; 
-            const textWidth = this.textWidth("999");
-            
-            const gaugeWidth = this.contents.width - iconOffset - textWidth - padding * 3;
-            const gaugeX = iconOffset + padding;
-            const gaugeY = (this.contents.height - gaugeHeight) / 2;
-
-            this.drawCustomGauge(gaugeX, gaugeY, gaugeWidth, rate, "#bee60cff", "#666666");
-
-            // 绘制文字
-            this.changeTextColor("#bee60cff");
-            this.drawText(`${currentSp}`, 
-                this.contents.width - textWidth - padding, 
-                0, 
-                textWidth, 
-                "right"
-            );
-        }
-
-        drawCustomGauge(x, y, width, rate, color1, color2) {
-            const height = 12;
-            const fillW = Math.floor(width * rate);
-            this.contents.fillRect(x, y, width, height, color2);
-            if (fillW > 0) {
-                this.contents.fillRect(x, y, fillW, height, color1);
-            }
+            this.changeTextColor("rgba(255,255,255,0.6)");
+            this.contents.fontSize = 18;
+            const text = "按 [确定] 键切换激活状态 / 按 [取消] 键返回";
+            const textHeight = 24; 
+            const y = (this.innerHeight - textHeight) / 2;
+            this.drawText(text, 0, y, this.innerWidth, "center");
         }
     }
 
-    window.Window_SkillDescription = Window_SkillDescription;
-    window.Window_ActorInfo = Window_ActorInfo;
-    window.Window_TalentList = Window_TalentList;
-    window.Window_SpGauge = Window_SpGauge;
-
     // ==============================================================================
-    // 模块 3: 菜单场景逻辑 (Scene_Menu) - 布局调整
+    // 模块 3: 场景布局逻辑 (新增：排序逻辑)
     // ==============================================================================
 
     const _Window_MenuCommand_makeCommandList = Window_MenuCommand.prototype.makeCommandList;
     Window_MenuCommand.prototype.makeCommandList = function() {
         _Window_MenuCommand_makeCommandList.call(this);
-        const skillIndex = this._list.findIndex(cmd => cmd.symbol === "skill");
-        if (skillIndex > -1) {
-            this._list.splice(skillIndex + 1, 0, { name: cmdName, symbol: "talent", enabled: true });
+        
+        // --- 排序逻辑 ---
+        const command = { name: cmdName, symbol: "talent", enabled: true, ext: null };
+        
+        if (insertTarget === "bottom") {
+            // 直接加在最后
+            this.addCommand(cmdName, "talent", true);
         } else {
-            this.addCommand(cmdName, "talent");
+            // 查找目标位置
+            const index = this._list.findIndex(cmd => cmd.symbol === insertTarget);
+            if (index >= 0) {
+                // 插入到目标后面 (index + 1)
+                this._list.splice(index + 1, 0, command);
+            } else {
+                // 如果找不到目标，就加在最后保底
+                this.addCommand(cmdName, "talent", true);
+            }
         }
     };
 
@@ -467,8 +428,10 @@
 
     Scene_Menu.prototype.openTalentMenu = function() {
         if (!$dataSkills) return;
+        
         this._statusWindow.hide();
-        this._goldWindow.hide();
+        // 指令窗口不隐藏，保持在左侧
+        
         this._talentStatusWindow = new Window_MenuStatus(this.statusWindowRect());
         this._talentStatusWindow.setHandler("ok", this.onTalentStatusOk.bind(this));
         this._talentStatusWindow.setHandler("cancel", this.closeTalentMenu.bind(this));
@@ -480,147 +443,96 @@
     Scene_Menu.prototype.onTalentStatusOk = function() {
         this._selectedActor = $gameParty.members()[this._talentStatusWindow.index()];
         this._talentStatusWindow.hide();
-        this.createFourWindowLayout();
+        this.createTalentLayout();
         this._talentListWindow.activate();
         this._talentListWindow.select(0);
-        this.updateSkillDescription();
+        this.updateTalentInfo();
     };
 
-    Scene_Menu.prototype.createFourWindowLayout = function() {
-        this._skillDescriptionWindow = new Window_SkillDescription(this.skillDescriptionRect());
-        this.addWindow(this._skillDescriptionWindow);
+    Scene_Menu.prototype.createTalentLayout = function() {
+        if (this._commandWindow) this._commandWindow.hide();
+        if (this._goldWindow) this._goldWindow.hide();
 
-        this._actorInfoWindow = new Window_ActorInfo(this.actorInfoRect());
+        const screenW = Graphics.boxWidth; 
+        const screenH = Graphics.boxHeight; 
+        
+        const topH = 140;   
+        const footH = 60;   
+        const mainH = screenH - topH - footH; 
+        
+        const leftW = 190;
+        const rightW = screenW - leftW;
+
+        this._skillDescWindow = new Window_SkillDescription(new Rectangle(0, 0, screenW, topH));
+        this.addWindow(this._skillDescWindow);
+
+        this._actorInfoWindow = new Window_ActorInfo(new Rectangle(0, topH, leftW, mainH));
         this._actorInfoWindow.setActor(this._selectedActor);
         this.addWindow(this._actorInfoWindow);
 
-        this._talentListWindow = new Window_TalentList(this.skillListRect());
-        this._talentListWindow.setHandler("ok", this.onSkillOk.bind(this));
-        this._talentListWindow.setHandler("cancel", this.backToActorSelect.bind(this));
-        this._talentListWindow.setHandler("cursorMoved", this.onSkillCursorMoved.bind(this));
+        this._talentListWindow = new Window_TalentList(new Rectangle(leftW, topH, rightW, mainH));
         this._talentListWindow.setActor(this._selectedActor);
+        this._talentListWindow.setHandler("ok", this.onTalentToggle.bind(this));
+        this._talentListWindow.setHandler("cancel", this.exitTalentLayout.bind(this));
+        this._talentListWindow.setHandler("cursorMoved", this.updateTalentInfo.bind(this));
         this.addWindow(this._talentListWindow);
 
-        this._spGaugeWindow = new Window_SpGauge(this.spGaugeRect());
-        this._spGaugeWindow.setActor(this._selectedActor);
-        this.addWindow(this._spGaugeWindow);
+        this._footerWindow = new Window_TalentFooter(new Rectangle(0, screenH - footH, screenW, footH));
+        this._footerWindow.refresh();
+        this.addWindow(this._footerWindow);
     };
 
-    Scene_Menu.prototype.onSkillCursorMoved = function() {
-        this.updateSkillDescription();
-    };
-
-    Scene_Menu.prototype.updateSkillDescription = function() {
+    Scene_Menu.prototype.updateTalentInfo = function() {
+        if (!this._talentListWindow) return;
         const skill = this._talentListWindow.item();
-        this._skillDescriptionWindow.setSkill(skill || null);
-        this._spGaugeWindow.setActor(this._selectedActor);
+        if (this._skillDescWindow) this._skillDescWindow.setSkill(skill);
     };
 
-    Scene_Menu.prototype.onSkillOk = function() {
+    Scene_Menu.prototype.onTalentToggle = function() {
         const skill = this._talentListWindow.item();
         if (skill && this._selectedActor) {
             const success = this._selectedActor.toggleSkill(skill.id);
             if (success) {
+                SoundManager.playUseSkill();
                 this._talentListWindow.refresh();
                 this._actorInfoWindow.refresh();
-                this._spGaugeWindow.setActor(this._selectedActor);
-                this.updateSkillDescription();
             }
         }
         this._talentListWindow.activate();
     };
 
-    Scene_Menu.prototype.backToActorSelect = function() {
-        this.closeFourWindows();
+    Scene_Menu.prototype.exitTalentLayout = function() {
+        this._skillDescWindow.destroy();
+        this._actorInfoWindow.destroy();
+        this._talentListWindow.destroy();
+        this._footerWindow.destroy();
+        
+        this._skillDescWindow = null;
+        this._actorInfoWindow = null;
+        this._talentListWindow = null;
+        this._footerWindow = null;
+
         this._talentStatusWindow.show();
         this._talentStatusWindow.activate();
+
+        if (this._commandWindow) {
+            this._commandWindow.show();
+            this._commandWindow.deactivate();
+        }
+        if (this._goldWindow) {
+            this._goldWindow.show();
+        }
     };
 
     Scene_Menu.prototype.closeTalentMenu = function() {
-        if (this._talentStatusWindow) {
-            this.removeWindow(this._talentStatusWindow);
-            this._talentStatusWindow = null;
-        }
-        this.closeFourWindows();
+        this._talentStatusWindow.destroy();
+        this._talentStatusWindow = null;
+        
         this._statusWindow.show();
         this._goldWindow.show();
-        this._commandWindow.activate();
-    };
-
-    Scene_Menu.prototype.closeFourWindows = function() {
-        if (this._skillDescriptionWindow) {
-             this.removeWindow(this._skillDescriptionWindow); this._skillDescriptionWindow = null; 
-        }
-        if (this._actorInfoWindow) { 
-            this.removeWindow(this._actorInfoWindow); this._actorInfoWindow = null; 
-        }
-        if (this._talentListWindow) { 
-            this.removeWindow(this._talentListWindow); this._talentListWindow = null; 
-        }
-        if (this._spGaugeWindow) { 
-            this.removeWindow(this._spGaugeWindow); this._spGaugeWindow = null; 
-        }
-    };
-
-    Scene_Menu.prototype.lineHeight = function() {
-        return Window_Base.prototype.lineHeight();
-    };
-
-    // ==============================================================================
-    // 布局矩形定义 (Rect) - 【优化】去除空隙，Y=0
-    // ==============================================================================
-
-    // 1. 顶部技能描述窗口 (Y=0, 绝对顶格)
-    Scene_Menu.prototype.skillDescriptionRect = function() {
-        const lineHeight = this.lineHeight();
-        const height = lineHeight * 2 + 32;
-        
-        // 修改说明：
-        // 第二个数字 (0) 改为 -4 或 -8 (向上移动，消除缝隙)
-        // 第四个变量 (height) 后面加上对应的数字 (补回高度，防止底部也跟着提上去)
-        return new Rectangle(0, -4, Graphics.boxWidth, height + 4); 
-    };
-
-    // 2. 左侧角色信息窗口
-    Scene_Menu.prototype.actorInfoRect = function() {
-        const topRect = this.skillDescriptionRect();
-        
-        // 【修改这里】在后面减去 10 (或者更多)，让它往上提，消除黑缝
-        const topY = topRect.height - 10; 
-        
-        // ...后续代码保持不变...
-        const bottomHeight = 60; 
-        const height = Graphics.boxHeight - topY - bottomHeight;
-        const width = Math.floor(Graphics.boxWidth / 3);
-        
-        return new Rectangle(0, topY, width, height);
-    };
-    // 3. 右侧技能列表窗口
-    Scene_Menu.prototype.skillListRect = function() {
-        const topRect = this.skillDescriptionRect();
-        const leftRect = this.actorInfoRect();
-        
-        // 【修改这里】保持和上面一样的数值 (例如 -10)
-        const topY = topRect.height - 10;
-        
-        const height = leftRect.height;
-        const width = Graphics.boxWidth - leftRect.width;
-
-        return new Rectangle(leftRect.width, topY, width, height);
-    };
-    // 4. 底部SP进度条窗口 (紧接中间窗口)
-    Scene_Menu.prototype.spGaugeRect = function() {
-        const leftRect = this.actorInfoRect();
-        const y = leftRect.y + leftRect.height;
-        const height = Graphics.boxHeight - y;
-
-        return new Rectangle(0, y, Graphics.boxWidth, height);
-    };
-
-    Scene_Menu.prototype.removeWindow = function(window) {
-        if (window) {
-            if (window.parent) window.parent.removeChild(window);
-            if (window.destroy) window.destroy();
+        if(this._commandWindow) {
+            this._commandWindow.show();
+            this._commandWindow.activate();
         }
     };
 

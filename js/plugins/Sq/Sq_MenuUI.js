@@ -120,11 +120,14 @@
             const iconSize = 12; 
             
             const drawIcon = () => {
+                // [Fix] 这里的修复防止对象销毁后继续绘制导致崩溃
+                if (!this.bitmap || !this.bitmap.context) return;
+
                 // 使用 blt 进行位图传输
                 this.bitmap.blt(bitmap, 0, 0, bitmap.width, bitmap.height, iconX, iconY, iconSize, iconSize);
             };
 
-            if (bitmap.width > 0) {
+            if (bitmap.isReady()) {
                 drawIcon();
             } else {
                 bitmap.addLoadListener(drawIcon);
@@ -301,6 +304,9 @@
         const lvIconY = row2Y + 12; 
         
         const drawLvStuff = () => {
+            // [Fix] 防止窗口关闭后回调执行导致崩溃
+            if (!this.contents || !this.contents.context) return;
+
             // 绘制图标
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, lvIconX, lvIconY);
             
@@ -809,6 +815,9 @@
         const lvIconY = row2Y + 6; 
         
         const drawExtra = () => {
+            // [Fix] 防止窗口销毁后访问上下文导致崩溃
+            if (!this.contents || !this.contents.context) return;
+
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, startX, lvIconY);
             this.resetTextColor();
             this.contents.fontSize = SQ_EQUIP_CONFIG.fontSize.level;
@@ -1001,7 +1010,11 @@
         // 职业与等级
         const lvIcon = ImageManager.loadPicture("lvicon");
         const drawLvY = currentY; 
+        
         const drawLv = () => {
+            // [Fix] 防止野指针崩溃
+            if (!this.contents || !this.contents.context) return;
+
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, infoX, drawLvY + 6);
             
             this.resetTextColor();

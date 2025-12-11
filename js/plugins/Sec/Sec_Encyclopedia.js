@@ -1,76 +1,39 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 综合图鉴 & 自定义帮助 & 竖屏布局适配
- * @author Secmon
- * 
- * @param menuCommandName
+ * @plugindesc [系统] 综合图鉴 Plus - 自动记录入队角色 & Menu背景
+ * @author Secmon (Optimized by Gemini)
+ * * @param menuCommandName
  * @text 主菜单显示名称
  * @desc 在主菜单中显示的命令名称。
  * @default 图鉴
- * 
- * 
- * @help
+ * * @help
  * ============================================================================
- * Sec_Encyclopedia.js
+ * Sec_Encyclopedia_Plus.js
  * ============================================================================
- * 专为 480x720 竖屏游戏设计的图鉴系统。
- * 支持：人物、技能、帮助、敌人解锁、自定义文本追加。
- *
- * ============================================================================
- * 资源目录规范 (必须遵守)
- * ============================================================================
- * 请确保以下文件夹存在，并放入对应图片：
- * img/pictures/Encyclopedia/
- * * 1. 角色立绘: Actor_{ID}.png (例如 Actor_1.png)
- * 2. 帮助图片: 自定义文件名.png (在指令中填写文件名)
- * 3. 敌人图片: 自动读取数据库设置，无需额外放入。
- *
- * ============================================================================
- * 方法一：插件指令 (推荐)
- * ============================================================================
- * 在事件编辑器中选择“插件指令”，选择 Sec_Encyclopedia 即可看到中文菜单。
- * * - 打开图鉴
- * - 解锁角色/敌人/技能
- * - 追加角色/技能描述 (支持 \n 换行)
- * - 注册帮助/设置帮助内容
- *
- * ============================================================================
- * 方法二：脚本调用 (高级用法)
- * ============================================================================
- * 如果你需要在脚本框或条件分支中使用，请参考以下代码：
- *
- * 1. 打开图鉴
- * Encyclopedia.open();
- *
- * 2. 解锁操作 (ID为数字)
- * Encyclopedia.unlockActor(1);      // 解锁角色 1
- * Encyclopedia.unlockEnemy(20);     // 解锁敌人 20
- * Encyclopedia.unlockSkill(5);      // 解锁技能 5
- *
- * 3. 追加文本 (支持 \n 换行)
- * Encyclopedia.addActorText(1, "这是第一行\n这是第二行");
- * Encyclopedia.addSkillText(5, "这是技能的隐藏攻略...");
- *
- * 4. 帮助系统配置
- * // 注册一个条目 (key是唯一英文标识, title是中文标题)
- * Encyclopedia.registerHelp("guide_01", "新手指南");
- * * // 设置内容 (key, 图片名, 文字内容)
- * Encyclopedia.setHelpContent("guide_01", "Help_Image", "这是帮助正文。");
- * * // 如果不需要图片，图片名留空字符串 ""
- * Encyclopedia.setHelpContent("guide_02", "", "纯文字帮助。");
- *
- * ============================================================================
+ * 专为 480x854 竖屏游戏设计。
+ * * 【新增特性】
+ * ★ 自动记录：只要角色加入过队伍（无论是初始还是中途加入），
+ * 即使离队，图鉴也会永久保留该角色信息。
+ * * 【核心特性】
+ * 1. 只显示已解锁条目（不显示 ???）。
+ * 2. 强制使用 img/pictures/Menu.png 作为背景。
+ * 3. 强制使用 img/system/BattleWindow.png 作为窗口皮肤。
+ * * 【资源规范】
+ * 1. 背景图: img/pictures/Menu.png
+ * 2. 窗口皮肤: img/system/BattleWindow.png
+ * 3. 图鉴图片: img/pictures/Encyclopedia/
+ * - 角色: Actor_{ID}.png
+ * * ============================================================================
  * @command open
  * @text 打开图鉴
  * @desc 打开图鉴场景。
  *
  * @command unlockActor
  * @text [解锁] 角色
- * @desc 解锁指定角色的图鉴条目。
+ * @desc (通常无需手动调用) 手动解锁指定角色的图鉴条目。
  * @arg id
  * @type actor
  * @text 选择角色
- * @desc 选择要解锁的角色。
  *
  * @command unlockEnemy
  * @text [解锁] 敌人
@@ -78,7 +41,6 @@
  * @arg id
  * @type enemy
  * @text 选择敌人
- * @desc 选择要解锁的敌人。
  *
  * @command unlockSkill
  * @text [解锁] 技能
@@ -86,61 +48,42 @@
  * @arg id
  * @type skill
  * @text 选择技能
- * @desc 选择要解锁的技能。
  *
  * @command addActorText
  * @text [文本] 追加角色描述
  * @desc 给角色追加一段剧情或备注文本。
  * @arg id
  * @type actor
- * @text 目标角色
  * @arg text
  * @type note
  * @text 描述内容
- * @desc 支持 \n 换行。
  *
  * @command addSkillText
  * @text [文本] 追加技能描述
  * @desc 给技能追加一段攻略或备注文本。
  * @arg id
  * @type skill
- * @text 目标技能
  * @arg text
  * @type note
  * @text 描述内容
- * @desc 支持 \n 换行。
  *
  * @command registerHelp
  * @text [帮助] 注册新条目
- * @desc 在“帮助”栏目中增加一个新的列表项。
  * @arg key
  * @type string
- * @text 唯一ID (Key)
- * @desc 英文标识符，用于后续绑定内容 (例如: guide_01)
  * @arg title
  * @type string
- * @text 显示标题
- * @desc 列表中显示的中文标题 (例如: 战斗操作指南)
  *
  * @command setHelpContent
  * @text [帮助] 设置详细内容
- * @desc 为已注册的帮助条目设置图片和文字。
  * @arg key
  * @type string
- * @text 对应ID (Key)
- * @desc 必须与注册时填写的ID一致。
  * @arg image
  * @type string
  * @text 图片文件名
- * @desc 位于 img/pictures/Encyclopedia/ 下的文件名(不带后缀)。留空则不显示。
  * @arg text
  * @type note
  * @text 帮助正文
- * @desc 详细说明文字，支持滚动查看。
- *
- * ============================================================================
- *
- *
  */
 
 (() => {
@@ -155,20 +98,24 @@
     const _Game_System_initialize = Game_System.prototype.initialize;
     Game_System.prototype.initialize = function() {
         _Game_System_initialize.call(this);
-        this._encyclopedia = null;
+        this.initEncyclopedia();
+    };
+
+    Game_System.prototype.initEncyclopedia = function() {
+        if (!this._encyclopedia) {
+            this._encyclopedia = {
+                unlockedActors: [],
+                unlockedEnemies: [],
+                unlockedSkills: [],
+                customTexts: { actor: {}, skill: {} },
+                helps: []
+            };
+        }
     };
 
     class EncyclopediaManager {
         static get data() {
-            if (!$gameSystem._encyclopedia) {
-                $gameSystem._encyclopedia = {
-                    unlockedActors: [],
-                    unlockedEnemies: [],
-                    unlockedSkills: [],
-                    customTexts: { actor: {}, skill: {} },
-                    helps: []
-                };
-            }
+            if (!$gameSystem._encyclopedia) $gameSystem.initEncyclopedia();
             return $gameSystem._encyclopedia;
         }
         
@@ -200,6 +147,26 @@
     window.Encyclopedia = EncyclopediaManager;
 
     //=============================================================================
+    // ★★★★ Auto Unlock Hook ★★★★ (核心新增代码)
+    //=============================================================================
+
+    // 监听：增加队员时自动解锁图鉴
+    const _Game_Party_addActor = Game_Party.prototype.addActor;
+    Game_Party.prototype.addActor = function(actorId) {
+        _Game_Party_addActor.call(this, actorId);
+        Encyclopedia.unlockActor(actorId);
+    };
+
+    // 监听：新游戏设置初始队员时自动解锁图鉴
+    const _Game_Party_setupStartingMembers = Game_Party.prototype.setupStartingMembers;
+    Game_Party.prototype.setupStartingMembers = function() {
+        _Game_Party_setupStartingMembers.call(this);
+        for (const actorId of this._actors) {
+            Encyclopedia.unlockActor(actorId);
+        }
+    };
+
+    //=============================================================================
     // Plugin Commands
     //=============================================================================
     
@@ -227,6 +194,20 @@
     });
 
     //=============================================================================
+    // Common Base Window
+    //=============================================================================
+    
+    class Window_EncyclopediaBase extends Window_Selectable {
+        loadWindowskin() {
+            this.windowskin = ImageManager.loadSystem("BattleWindow");
+        }
+        resetTextColor() {
+            this.changeTextColor(ColorManager.normalColor());
+            this.changeOutlineColor(ColorManager.outlineColor());
+        }
+    }
+
+    //=============================================================================
     // Scene Implementation
     //=============================================================================
 
@@ -242,7 +223,14 @@
             this.onCategoryChange();
         }
 
-        needsCancelButton() { return false; }
+        createBackground() {
+            this._backgroundSprite = new Sprite();
+            this._backgroundSprite.bitmap = ImageManager.loadPicture("Menu");
+            this.addChild(this._backgroundSprite);
+            this.setBackgroundOpacity(255);
+        }
+
+        needsCancelButton() { return true; }
 
         createCategoryWindow() {
             const rect = new Rectangle(0, 0, Graphics.boxWidth, this.calcWindowHeight(1, true));
@@ -255,7 +243,7 @@
 
         createListWindow() {
             const wy = this._categoryWindow.y + this._categoryWindow.height;
-            const rect = new Rectangle(0, wy, Math.floor(Graphics.boxWidth * 0.35), Graphics.boxHeight - wy);
+            const rect = new Rectangle(0, wy, Math.floor(Graphics.boxWidth * 0.38), Graphics.boxHeight - wy);
             this._listWindow = new Window_EncyclopediaList(rect);
             this._listWindow.setHandler("ok", this.onListOk.bind(this));
             this._listWindow.setHandler("cancel", this.onListCancel.bind(this));
@@ -304,10 +292,9 @@
             const ww = Graphics.boxWidth - wx;
             const totalH = Graphics.boxHeight - wy;
 
-            // 智能布局：技能界面右上角只占 28%，其他占 45%
-            let ratio = 0.45;
+            let ratio = 0.50; 
             if (symbol === 'skill') {
-                ratio = 0.28;
+                ratio = 0.30; 
             }
 
             const vh = Math.floor(totalH * ratio);
@@ -341,6 +328,8 @@
     //=============================================================================
 
     class Window_EncyclopediaCategory extends Window_HorzCommand {
+        loadWindowskin() { this.windowskin = ImageManager.loadSystem("BattleWindow"); }
+        
         makeCommandList() {
             this.addCommand("人物", "character");
             this.addCommand("技能", "skill");
@@ -351,7 +340,7 @@
         itemTextAlign() { return "center"; }
     }
 
-    class Window_EncyclopediaList extends Window_Selectable {
+    class Window_EncyclopediaList extends Window_EncyclopediaBase {
         initialize(rect) {
             super.initialize(rect);
             this._category = "";
@@ -365,8 +354,9 @@
         setVisualWindow(win) { this._visualWindow = win; }
         setDescWindow(win) { this._descWindow = win; }
         maxCols() { return 1; }
-        resetFontSettings() { super.resetFontSettings(); this.contents.fontSize = 20; }
-        itemHeight() { return Math.floor(this.lineHeight() * 0.9); }
+        
+        itemHeight() { return this.lineHeight() + 8; } 
+        
         refresh() { this.makeItemList(); this.createContents(); this.drawAllItems(); }
         
         makeItemList() {
@@ -376,12 +366,21 @@
                 for (let i = 1; i < $dataActors.length; i++) {
                     const actor = $dataActors[i];
                     if (!actor) continue;
-                    if ($gameParty.allMembers().some(m => m.actorId() === i) || sys.unlockedActors.includes(i))
-                        this._data.push({ type: 'actor', item: actor });
+                    
+                    // 判断逻辑更新：
+                    // 虽然有了自动记录，但保留 $gameParty.allMembers 检查作为双重保险
+                    // 只要 ID 存在于 unlockedActors 中，就显示
+                    const isUnlocked = sys.unlockedActors.includes(i) || $gameParty.allMembers().some(m => m.actorId() === i);
+                    
+                    if (isUnlocked) {
+                        this._data.push({ type: 'actor', item: actor, unlocked: true });
+                        // 确保数据同步（如果是意外入队但没记录的情况）
+                        if (!sys.unlockedActors.includes(i)) sys.unlockedActors.push(i);
+                    }
                 }
                 for (const id of sys.unlockedEnemies) {
                     const enemy = $dataEnemies[id];
-                    if (enemy) this._data.push({ type: 'enemy', item: enemy });
+                    if (enemy) this._data.push({ type: 'enemy', item: enemy, unlocked: true });
                 }
             } else if (this._category === "skill") {
                 const skillIds = new Set();
@@ -390,30 +389,44 @@
                 const sortedIds = Array.from(skillIds).sort((a, b) => a - b);
                 for (const id of sortedIds) {
                     const skill = $dataSkills[id];
-                    if (skill && skill.name) this._data.push({ type: 'skill', item: skill });
+                    if (skill && skill.name) this._data.push({ type: 'skill', item: skill, unlocked: true });
                 }
             } else if (this._category === "help") {
                 this._data = sys.helps;
             }
         }
+        
         maxItems() { return this._data ? this._data.length : 0; }
+        
         drawItem(index) {
-            const item = this._data[index];
-            if (!item) return;
+            const entry = this._data[index];
+            if (!entry) return;
             const rect = this.itemLineRect(index);
-            const name = (this._category === "help") ? item.title : item.item.name;
-            this.changePaintOpacity(true);
-            this.drawText(name, rect.x, rect.y + (rect.height - this.lineHeight())/2, rect.width);
+            
+            if (this._category === "help") {
+                this.drawText(entry.title, rect.x, rect.y, rect.width);
+            } else {
+                let iconIndex = 0;
+                if (entry.type === 'skill') iconIndex = entry.item.iconIndex;
+                else if (entry.type === 'actor') iconIndex = 0; 
+                else if (entry.type === 'enemy') iconIndex = 1; 
+                
+                const textMargin = iconIndex > 0 ? ImageManager.iconWidth + 4 : 0;
+                if (iconIndex > 0) this.drawIcon(iconIndex, rect.x, rect.y + (rect.height - ImageManager.iconHeight)/2);
+                
+                this.drawText(entry.item.name, rect.x + textMargin, rect.y, rect.width - textMargin);
+            }
         }
+        
         select(index) {
             super.select(index);
-            const item = (this._data && index >= 0) ? this._data[index] : null;
-            if (this._visualWindow) this._visualWindow.setItem(item);
-            if (this._descWindow) this._descWindow.setItem(item);
+            const entry = (this._data && index >= 0) ? this._data[index] : null;
+            if (this._visualWindow) this._visualWindow.setItem(entry);
+            if (this._descWindow) this._descWindow.setItem(entry);
         }
     }
 
-    class Window_EncyclopediaVisual extends Window_Base {
+    class Window_EncyclopediaVisual extends Window_EncyclopediaBase {
         initialize(rect) { super.initialize(rect); this._itemEntry = null; }
         resetFontSettings() { super.resetFontSettings(); this.contents.fontSize = 20; }
         lineHeight() { return 30; }
@@ -425,6 +438,7 @@
             this.contents.clear();
             if (!this._itemEntry) return;
             const entry = this._itemEntry;
+            
             if (entry.type === 'skill') this.drawSkillInfo(entry.item);
             else if (entry.type === 'actor') this.drawActorInfo(entry.item);
             else if (entry.type === 'enemy') this.drawEnemyInfo(entry.item);
@@ -433,77 +447,94 @@
 
         drawSkillInfo(skill) {
             const w = this.contentsWidth();
-            let y = 0;
+            let y = 10;
             const lh = this.lineHeight();
             
-            // 技能名
-            this.drawIcon(skill.iconIndex, 0, y + 2);
-            this.contents.fontSize += 6;
+            this.contents.fontSize += 4;
             this.changeTextColor(ColorManager.systemColor());
-            this.drawText(skill.name, ImageManager.iconWidth + 12, y, w - 50);
+            this.drawIcon(skill.iconIndex, (w - this.textWidth(skill.name) - 36)/2, y);
+            this.drawText(skill.name, 0, y, w, 'center');
             this.resetTextColor();
-            this.contents.fontSize -= 6;
-            y += lh + 4;
+            this.contents.fontSize -= 4;
+            y += lh + 10;
             
-            this.drawRect(0, y, w, 2);
-            y += 6;
+            this.drawRect(10, y, w - 20, 2);
+            y += 10;
             
-            // 属性
             const hitType = ["必中", "物理", "魔法"][skill.hitType] || "必中";
             const elName = $dataSystem.elements[skill.damage.elementId] || "无";
+            
+            this.changeTextColor(ColorManager.textColor(6)); 
+            this.drawText(`类型: ${hitType}`, 20, y, w);
+            y += lh;
+            this.drawText(`属性: ${elName}`, 20, y, w);
+            y += lh;
+            
             let cost = "";
             if (skill.mpCost > 0) cost += `MP:${skill.mpCost} `;
             if (skill.tpCost > 0) cost += `TP:${skill.tpCost}`;
-            this.changeTextColor(ColorManager.textColor(14));
-            this.drawText(`[${hitType}] 属性: ${elName}  ${cost||"无消耗"}`, 0, y, w);
-            this.resetTextColor();
-            y += lh + 4;
+            this.changeTextColor(ColorManager.textColor(23)); 
+            this.drawText(`消耗: ${cost || "无"}`, 20, y, w);
             
-            // 技能描述 (只展示数据库中的简短描述)
-            this.drawTextEx(skill.description, 0, y, w);
+            this.resetTextColor();
         }
         
         drawActorInfo(a) { this.loadImage("Actor_" + a.id); }
         drawEnemyInfo(e) { 
-            const bmp = ImageManager.loadEnemy(e.battlerName, e.battlerHue);
-            bmp.addLoadListener(() => this.drawFit(bmp));
+            const name = e.battlerName;
+            const hue = e.battlerHue;
+            const bmp = ImageManager.loadEnemy(name);
+            if (bmp.isReady()) {
+                this.drawFit(bmp, hue);
+            } else {
+                bmp.addLoadListener(() => this.drawFit(bmp, hue));
+            }
         }
         drawHelpInfo(h) { if (h.image) this.loadImage(h.image); }
+        
         loadImage(n) { 
             const bmp = ImageManager.loadBitmap("img/pictures/Encyclopedia/", n);
-            bmp.addLoadListener(() => this.drawFit(bmp));
+            if(bmp.isReady()) this.drawFit(bmp);
+            else bmp.addLoadListener(() => this.drawFit(bmp));
         }
-        drawFit(bmp) {
+        
+        drawFit(bmp, hue = 0) {
+            this.contents.clear();
             const w = this.contentsWidth(), h = this.contentsHeight();
             if (bmp.width <=0) return;
+            
             const r = Math.min(w/bmp.width, h/bmp.height, 1);
-            const dw = Math.floor(bmp.width * r), dh = Math.floor(bmp.height * r);
-            this.contents.blt(bmp, 0, 0, bmp.width, bmp.height, (w-dw)/2, (h-dh)/2, dw, dh);
+            const dw = Math.floor(bmp.width * r);
+            const dh = Math.floor(bmp.height * r);
+            const dx = (w-dw)/2;
+            const dy = (h-dh)/2;
+
+            this.contents.blt(bmp, 0, 0, bmp.width, bmp.height, dx, dy, dw, dh);
         }
+        
         drawRect(x, y, w, h) { this.contents.fillRect(x, y, w, h, ColorManager.textColor(8)); }
     }
 
-    class Window_EncyclopediaDesc extends Window_Base {
+    class Window_EncyclopediaDesc extends Window_EncyclopediaBase {
         initialize(rect) {
             super.initialize(rect);
             this._itemEntry = null;
             this._cancelHandler = null;
             this._isActive = false;
-            
             this._scrollY = 0;       
             this._maxScrollY = 0;    
             this._touching = false;
             this._lastTouchY = 0;
             this.hide();
-            this.show();
+            this.show(); 
         }
 
         setCancelHandler(method) { this._cancelHandler = method; }
-        resetFontSettings() { super.resetFontSettings(); this.contents.fontSize = 18; }
-        lineHeight() { return 26; }
+        resetFontSettings() { super.resetFontSettings(); this.contents.fontSize = 22; } 
+        lineHeight() { return 32; }
         
         activate() { this._isActive = true; this.opacity = 255; }
-        deactivate() { this._isActive = false; this.opacity = 192; }
+        deactivate() { this._isActive = false; this.opacity = 192; } 
         isActive() { return this._isActive; }
 
         setItem(entry) {
@@ -520,28 +551,42 @@
         }
 
         refresh() {
+            this.contents.clear();
             if (!this._itemEntry) {
-                this.contents.clear();
-                this.changeTextColor(ColorManager.textColor(7));
-                if(this._itemEntry && this._itemEntry.type !== 'skill')
-                   this.drawText("暂无详细记录...", 0, 0, this.contentsWidth(), "center");
-                this.resetTextColor();
                 return;
             }
 
             const sys = Encyclopedia.data;
             let textArray = [];
-            if (this._itemEntry.type === 'actor') textArray = sys.customTexts.actor[this._itemEntry.item.id];
-            else if (this._itemEntry.type === 'skill') textArray = sys.customTexts.skill[this._itemEntry.item.id];
-            else if (this._itemEntry.key) textArray = [this._itemEntry.text];
-
-            if (!textArray || textArray.length === 0) {
-                this.contents.clear();
-                if (this._itemEntry.type !== 'skill') {
-                    this.changeTextColor(ColorManager.textColor(7));
-                    this.drawText("暂无详细记录...", 0, 0, this.contentsWidth(), "center");
-                    this.resetTextColor();
+            
+            if (this._itemEntry.type === 'actor') textArray = sys.customTexts.actor[this._itemEntry.item.id] || [];
+            else if (this._itemEntry.type === 'skill') {
+                textArray = [this._itemEntry.item.description];
+                if (sys.customTexts.skill[this._itemEntry.item.id]) {
+                    textArray = textArray.concat(sys.customTexts.skill[this._itemEntry.item.id]);
                 }
+            }
+            else if (this._itemEntry.key) textArray = [this._itemEntry.text];
+            else if (this._itemEntry.type === 'enemy') {
+                const enemy = this._itemEntry.item;
+                const drops = enemy.dropItems.map(d => {
+                    if(d.kind === 1) return $dataItems[d.dataId].name;
+                    if(d.kind === 2) return $dataWeapons[d.dataId].name;
+                    if(d.kind === 3) return $dataArmors[d.dataId].name;
+                    return "";
+                }).filter(n => n);
+                
+                let desc = `HP: ${enemy.params[0]}  MP: ${enemy.params[1]}\n`;
+                desc += `攻击: ${enemy.params[2]}  防御: ${enemy.params[3]}\n`;
+                if(drops.length > 0) desc += `\n掉落:\n${drops.join('\n')}`;
+                else desc += "\n暂无掉落信息。";
+                textArray = [desc];
+            }
+
+            if (!textArray || textArray.length === 0 || (textArray.length === 1 && !textArray[0])) {
+                this.changeTextColor(ColorManager.textColor(7));
+                this.drawText("暂无详细记录...", 0, 0, this.contentsWidth(), "center");
+                this.resetTextColor();
                 this._maxScrollY = 0;
                 return;
             }
@@ -577,8 +622,8 @@
 
         processInput() {
             if (!this.isActive()) return;
-            if (Input.isPressed("up")) this.applyScroll(-5);
-            if (Input.isPressed("down")) this.applyScroll(5);
+            if (Input.isPressed("up")) this.applyScroll(-10);
+            if (Input.isPressed("down")) this.applyScroll(10);
             if (Input.isTriggered("cancel") || TouchInput.isCancelled()) {
                 SoundManager.playCancel();
                 if (this._cancelHandler) this._cancelHandler();
@@ -617,7 +662,7 @@
                 this._scrollBarSprite = new Sprite();
                 this._scrollBarSprite.bitmap = new Bitmap(6, 1);
                 this.addChild(this._scrollBarSprite); 
-                this._scrollBarSprite.x = this.width - 16;
+                this._scrollBarSprite.x = this.width - 12; 
                 this._scrollBarSprite.y = 0;
             }
             const sprite = this._scrollBarSprite;
@@ -637,13 +682,10 @@
             const scrollPercent = this._scrollY / this._maxScrollY;
             const barY = this.padding + scrollPercent * (visibleH - barH);
 
-            sprite.bitmap.fillRect(0, barY, 6, barH, 'rgba(255,255,255,0.7)');
+            sprite.bitmap.fillRect(0, barY, 4, barH, 'rgba(255,255,255,0.5)');
         }
     }
 
-    //=============================================================================
-    // Main Menu Integration
-    //=============================================================================
     const _Window_MenuCommand_addOriginalCommands = Window_MenuCommand.prototype.addOriginalCommands;
     Window_MenuCommand.prototype.addOriginalCommands = function() {
         _Window_MenuCommand_addOriginalCommands.call(this);
