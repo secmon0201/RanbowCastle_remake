@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [系统+界面] 竖屏J2ME专用 - 强制布局/全屏修复/边框美化 (二合一终极版)
+ * @plugindesc [系统] 打包安卓必开启 & 手机布局 & 融合防黑屏 
  * @author 神枪手 & Gemini Fix
  *
  * @help
@@ -384,6 +384,11 @@
         CSSInjector.init();
         decorationManager.init();
     };
+    // --- 👇👇👇 在这里插入防黑屏代码 (开始) 👇👇👇 ---
+    SceneManager.isGameActive = function () {
+    return true;
+    };
+    // --- 👆👆👆 在这里插入防黑屏代码 (结束) 👆👆👆 ---
 
     const _Graphics_updateCanvas = Graphics._updateCanvas;
     Graphics._updateCanvas = function() {
