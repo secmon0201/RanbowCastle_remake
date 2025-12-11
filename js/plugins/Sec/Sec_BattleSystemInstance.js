@@ -684,7 +684,7 @@
                 }
             }
 
-            // B3. 守护光环
+            // B3. 守护光环 (Fix: 增加伤害累计手动记录)
             if (actualDamage > 0) {
                 const friends = target.friendsUnit().members();
                 for (const guardian of friends) {
@@ -723,6 +723,13 @@
                                             _Sec_SuppressLog(guardian); guardian.gainHp(-guardianDmg);
                                             guardian.result().hpDamage = guardianDmg;
                                             guardian.result().hpAffected = true;
+                                            
+                                            // [Fix] 手动为守护者累加伤害记录 (因为gainHp不触发Hit标签)
+                                            // 只有当受到的伤害为正数时才累加
+                                            if (guardianDmg > 0) {
+                                                guardian._secSinAccumulator = (guardian._secSinAccumulator || 0) + guardianDmg;
+                                            }
+
                                             guardian.startDamagePopup();
                                             guardian.performDamage();
                                             if (guardian.isDead()) guardian.performCollapse();

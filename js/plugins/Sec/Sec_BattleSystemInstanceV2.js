@@ -317,7 +317,9 @@
         }
 
         // --- 2.3 自定义脚本 (Custom Effect) ---
-        const scriptMatches = note.matchAll(/<CustomEffect[:：]\s*(.+)\s*>/gi);
+        // [Fix] 使用 [\s\S]+? 来匹配多行脚本内容
+        // [Fix] 使用 [\s\S]+? 允许匹配多行脚本
+        const scriptMatches = note.matchAll(/<CustomEffect[:：]\s*([\s\S]+?)\s*>/gi);
         for (const match of scriptMatches) {
             try {
                 const a = subject;
