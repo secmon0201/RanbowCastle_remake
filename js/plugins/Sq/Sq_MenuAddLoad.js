@@ -825,3 +825,87 @@ Window_ShopNumber.prototype.totalPriceY = function() {
 Window_ShopNumber.prototype.itemNameY = function() {
     return Math.floor(this.innerHeight / 2 - this.lineHeight() * 1.5);
 };
+// ============================================================================
+// [Sq_J2ME_Style_Patch] J2ME风格化补丁 - 强制替换窗口皮肤与透明度
+// ============================================================================
+(() => {
+    'use strict';
+
+    // 1. 定义所有需要修改样式的窗口类
+    // 这里包含了菜单、物品、技能、装备、状态、存档、商店以及通用窗口
+    const targetWindowClasses = [
+        // 基础通用
+        Window_Help,
+        Window_Gold,
+        Window_MenuCommand,
+        Window_MenuStatus,
+        Window_MenuActor,
+        
+        // 物品界面
+        Window_ItemCategory,
+        Window_ItemList,
+        
+        // 技能界面
+        Window_SkillType,
+        Window_SkillStatus,
+        Window_SkillList,
+        Window_SkillHelp, // 插件自定义的窗口类
+        
+        // 装备界面
+        Window_EquipCommand,
+        Window_EquipSlot,
+        Window_EquipItem,
+        Window_EquipStatus,
+        
+        // 状态界面
+        Window_Status,
+        Window_StatusParams,
+        Window_StatusEquip,
+        
+        // 系统/存档/设置
+        Window_Options,
+        Window_SavefileList,
+        Window_GameEnd,
+        
+        // 商店界面
+        Window_ShopCommand,
+        Window_ShopBuy,
+        Window_ShopSell,
+        Window_ShopNumber,
+        Window_ShopStatus
+    ];
+
+    // 2. 遍历并修改这些窗口的原型方法
+    for (const WinClass of targetWindowClasses) {
+        if (!WinClass) continue; // 防止某些类未定义报错
+
+        // 重写 loadWindowskin 方法：强制读取 Battlewindow
+        WinClass.prototype.loadWindowskin = function() {
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
+        };
+
+        // 重写 updateBackOpacity 方法：强制设置为 255 (完全不透明)
+        // 注意：原版 MZ 会根据 System.json 的设定变化，这里我们强制锁定
+        WinClass.prototype.updateBackOpacity = function() {
+            this.backOpacity = 255;
+        };
+        
+        // 额外保险：初始化时强制移除透明滤镜（如果有的话）
+        const _alias_initialize = WinClass.prototype.initialize;
+        WinClass.prototype.initialize = function(rect) {
+            _alias_initialize.call(this, rect);
+            this.backOpacity = 255; // 初始化时直接设为255
+            this.opacity = 255;     // 确保窗口容器也是不透明的
+        };
+    }
+
+    // 3. 特殊处理：修复商店数字输入窗口的背景残留问题
+    // Window_ShopNumber 在 MZ 中默认可能不绘制背景，这里强制开启
+    Window_ShopNumber.prototype.setBackgroundType = function(type) {
+        // 强制设为 0 (Window 模式)，忽略系统可能的透明设置
+        Window_Selectable.prototype.setBackgroundType.call(this, 0);
+        this.opacity = 255;
+        this.backOpacity = 255;
+    };
+
+})();

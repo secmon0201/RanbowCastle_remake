@@ -269,3 +269,41 @@ Window_Gold.prototype.refresh = function() {
     // 恢复默认字号
     this.contents.fontSize = oldSize;
 };
+
+// ============================================================================
+// [Sq_MenuFace_J2ME_Patch] 主菜单界面 J2ME 风格化补丁
+// ============================================================================
+(() => {
+    'use strict';
+
+    // 定义主菜单界面涉及的窗口类
+    const menuWindowClasses = [
+        Window_MenuCommand, // 左上角的命令窗口
+        Window_MenuStatus,  // 右侧的角色状态窗口
+        Window_Gold         // 左下角的金币窗口
+    ];
+
+    for (const WinClass of menuWindowClasses) {
+        // 1. 重写 loadWindowskin：强制读取 Battlewindow
+        WinClass.prototype.loadWindowskin = function() {
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
+        };
+
+        // 2. 重写 updateBackOpacity：强制锁定背景不透明度为 255
+        WinClass.prototype.updateBackOpacity = function() {
+            this.backOpacity = 255;
+        };
+
+        // 3. 初始化拦截：确保窗口创建瞬间即为不透明，防止渐变闪烁
+        const _alias_initialize = WinClass.prototype.initialize;
+        WinClass.prototype.initialize = function(rect) {
+            _alias_initialize.call(this, rect);
+            this.backOpacity = 255; // 背景不透明
+            this.opacity = 255;     // 窗口框架不透明
+            
+            // 移除可能存在的背景滤镜（如果其他插件添加了模糊效果）
+            if (this._dimmerSprite) this._dimmerSprite.visible = false;
+        };
+    }
+
+})();
