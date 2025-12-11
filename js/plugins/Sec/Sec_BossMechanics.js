@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] Boss机制扩展：召唤/状态触发/条件技能 (v1.6 召唤图层优化)
+ * @plugindesc [战斗] Boss机制工具箱：召唤/回溯/种族/脚本 (v2.0 终极版)
  * @author Secmon (Mechanics)
  * @base Sec_BattleSystemInstance
  * @orderAfter Sec_BattleSystemInstance
@@ -8,75 +8,76 @@
  *
  * @help
  * ============================================================================
- * Sec_BossMechanics.js (v1.6)
+ * Sec_BossMechanics.js (v2.0)
  * ============================================================================
- * 这是一个专为 Boss 设计的机制扩展插件。
- * 需放置在 Sec_BattleSystemInstance 和 Sec_BattleVisuals 之间。
+ * 本插件专为实现复杂Boss机制设计，整合了召唤、时间回溯、条件技能和脚本执行。
+ * * 【功能模块索引】
+ * 1. 召唤系统 (Summon)     -> 用于“阴阳两隔”等召唤技能
+ * 2. 状态亡语 (Trigger)    -> 用于“钻地”结束后的突袭、“和光同尘”的回溯触发
+ * 3. 条件技能 (Condition)  -> 用于根据场上小怪情况切换技能
+ * 4. 快照系统 (Snapshot)   -> 用于“和光同尘”记录和恢复血量
+ * 5. 脚本特效 (Custom)     -> 用于“巫狼”给特定种族加Buff
+ * 6. 种族光环 (Tribe)      -> 用于“暗黑体质”全场检测加成
  *
- * 【更新日志 v1.6】
- * 1. [优化] 召唤位置 Y 轴逻辑调整：
- * 为了保证遮挡关系正确（新召唤的单位图层在旧单位之上），
- * 新召唤的单位现在永远位于召唤者（Boss）的下方（Y轴更大）。
- * SummonRangeY 现在代表向下的随机偏移量。
+ * ============================================================================
+ * 【1. 召唤系统】(技能备注)
+ * <SummonUnique: id, anim>  - 唯一召唤 (场上没有才召)
+ * <SummonForce: id, anim>   - 强制召唤 (填满为止)
+ * * 示例: <SummonForce: 10, 120> (召唤10号敌人，播放120号动画)
  *
- * 【功能说明】
- *
- * 1. 召唤类主动技能 (写在技能备注)
- * 格式：<标签: 敌人ID, 动画ID> (动画ID可选，不填则无动画)
- *
- * <SummonUnique: enemyId, animId>
- * - 检查场上是否存在该 enemyId 的敌人(活体)。
- * - 如果不存在，则召唤该敌人并播放 animId 动画。
- * - 示例: <SummonUnique: 10, 66> (召唤10号敌人，播放66号动画)
- *
- * <SummonForce: enemyId, animId>
- * - 强制召唤该 enemyId 的敌人，直到场上敌人总数达到 8 人上限。
- * - 示例: <SummonForce: 11> (召唤11号敌人，不播放动画)
- *
- * 2. 被动型技能 (写在敌人备注)
- * <SummonState: stateId>
- * - 该敌人被“召唤”出场时，立即获得指定状态。
- *
- * 3. 状态型技能 (写在状态备注)
+ * 【2. 状态亡语】(状态备注)
  * <RemoveTrigger: skillId>
- * - 当持有该状态的单位移除该状态时（自然消失或驱散），强制释放技能。
+ * - 当状态消失/被驱散时，强制持有者释放技能。
+ * * 示例: <RemoveTrigger: 88> (状态结束后释放88号技能)
  *
- * 4. 主动型检测技能 (写在技能备注)
- * <ConditionCheck: ids=[a,b,...], true=x, false=y>
- * - ids: 检测敌人ID列表。
- * - true: 全都在场时释放的技能ID。
- * - false: 否则释放的技能ID。
+ * 【3. 条件技能】(技能备注)
+ * <ConditionCheck: meta=Race, value=Dark, count=All, true=X, false=Y>
+ * - 检测场上敌人是否符合条件，符合放技能X，否则放Y。
+ *
+ * 【4. 快照系统】(技能备注 - 用于时间回溯)
+ * <Snapshot: Record, Key>
+ * - 记录当前 HP/MP/TP 到 Key 槽位。
+ * <Snapshot: Restore, Key>
+ * - 读取 Key 槽位的数据。如果不满(当前<记录)，则回溯恢复。
+ * * 示例: "和光同尘"先 Record，4回合后的触发技 Restore。
+ *
+ * 【5. 脚本特效】(技能备注 - 用于复杂逻辑)
+ * <CustomEffect: JS代码>
+ * - 在技能生效时执行一段JS代码。变量 b 代表目标。
+ * * 示例(巫狼吼叫): <CustomEffect: if(b.enemy().meta.Race === 'Animal') b.addBuff(2, 3)>
+ *
+ * 【6. 种族光环】(敌人备注 - 用于暗黑体质)
+ * <TribeBonus: metaKey, metaVal, paramId, rate>
+ * - 当场上【所有】敌人都具有 <metaKey: metaVal> 标签时，自身属性 paramId 提升 rate 倍。
+ * - paramId: 2=攻, 3=防, 4=魔攻, 5=魔防, 6=敏, 7=运, 0=MHP
+ * * 示例: <TribeBonus: Race, Dark, 2, 1.5> (全员Dark族时，攻击力1.5倍)
  *
  * ============================================================================
  * @param ---Summon Settings---
- * @text [召唤] 表现设置
+ * @text [召唤] 位置设置
  * @default
  *
  * @param SummonInterval
  * @parent ---Summon Settings---
  * @text 召唤间隔(帧)
- * @desc 连续召唤多个敌人时，每个敌人出现的间隔时间。
  * @type number
  * @default 30
  *
  * @param SummonDistanceX
  * @parent ---Summon Settings---
  * @text 初始水平间距
- * @desc 第1、2个召唤物距离召唤者的基础水平距离。
  * @type number
  * @default 120
  *
  * @param SummonDistanceStep
  * @parent ---Summon Settings---
  * @text 距离递增值
- * @desc 每次召唤后，下一次召唤距离增加的像素值。
  * @type number
  * @default 40
  *
  * @param SummonRangeY
  * @parent ---Summon Settings---
  * @text 向下随机范围
- * @desc 召唤物在 Y 轴上相对于召唤者的向下随机偏移量（保证图层在召唤者之上）。
  * @type number
  * @default 60
  *
@@ -88,14 +89,13 @@
     const pluginName = "Sec_BossMechanics";
     const parameters = PluginManager.parameters(pluginName);
 
-    // 召唤参数
     const SUMMON_INTERVAL = Number(parameters['SummonInterval'] || 30);
     const SUMMON_DIST_X = Number(parameters['SummonDistanceX'] || 120);
     const SUMMON_DIST_STEP = Number(parameters['SummonDistanceStep'] || 40);
     const SUMMON_RANGE_Y = Number(parameters['SummonRangeY'] || 60);
 
     // ======================================================================
-    // 工具：获取战斗单位坐标
+    // 工具库
     // ======================================================================
     function getBattlerPos(battler) {
         if (!battler) return { x: 600, y: 300 };
@@ -112,174 +112,120 @@
     }
 
     // ======================================================================
-    // Game_Troop 扩展：召唤队列
+    // 1. 种族光环 (Tribe Bonus) - 核心属性挂钩
     // ======================================================================
-    const _Game_Troop_initialize = Game_Troop.prototype.initialize;
-    Game_Troop.prototype.initialize = function() {
-        _Game_Troop_initialize.call(this);
-        this.clearSummonQueue();
-    };
-
-    const _Game_Troop_clear = Game_Troop.prototype.clear;
-    Game_Troop.prototype.clear = function() {
-        _Game_Troop_clear.call(this);
-        this.clearSummonQueue();
-    };
-
-    Game_Troop.prototype.clearSummonQueue = function() {
-        this._secSummonQueue = [];
-        this._secSummonTimer = 0;
-    };
-
-    // 加入队列
-    Game_Troop.prototype.requestSummonEnqueue = function(enemyId, isUnique, summoner, animId) {
-        this._secSummonQueue.push({
-            enemyId: enemyId,
-            isUnique: isUnique,
-            summoner: summoner,
-            animId: animId
-        });
-    };
-
-    // 队列更新 (由 BattleManager 驱动)
-    Game_Troop.prototype.updateSecSummon = function() {
-        if (this._secSummonTimer > 0) {
-            this._secSummonTimer--;
-            return;
-        }
+    const _Game_Enemy_paramRate = Game_Enemy.prototype.paramRate;
+    Game_Enemy.prototype.paramRate = function(paramId) {
+        let rate = _Game_Enemy_paramRate.call(this, paramId);
         
-        if (this._secSummonQueue.length > 0) {
-            const req = this._secSummonQueue.shift();
-            // 执行实际召唤逻辑
-            this.secExecuteSummon(req);
-            // 重置冷却时间
-            this._secSummonTimer = SUMMON_INTERVAL;
-        }
-    };
+        // 读取敌人备注中的光环设置
+        const note = this.enemy().note;
+        // <TribeBonus: Race, Dark, 2, 1.5>
+        const matches = note.matchAll(/<TribeBonus[:：]\s*(\w+)\s*[,，]\s*(\w+)\s*[,，]\s*(\d+)\s*[,，]\s*([\d\.]+)\s*>/g);
+        
+        for (const match of matches) {
+            const metaKey = match[1];
+            const metaVal = match[2];
+            const targetParamId = parseInt(match[3]);
+            const bonusRate = parseFloat(match[4]);
 
-    // 执行单次召唤
-    Game_Troop.prototype.secExecuteSummon = function(req) {
-        const { enemyId, isUnique, summoner, animId } = req;
+            // 只处理当前请求的属性ID
+            if (paramId === targetParamId) {
+                // 检查全场条件
+                const troops = $gameTroop.aliveMembers();
+                const allMatch = troops.every(member => {
+                    const data = member.enemy();
+                    return data.meta && data.meta[metaKey] === metaVal;
+                });
 
-        // 1. 检查唯一性
-        if (isUnique) {
-            const exists = this.members().some(e => e.enemyId() === enemyId && e.isAlive());
-            if (exists) return;
-        }
-
-        // 2. 检查人数上限
-        if (this.members().length >= 8) {
-            // 复用尸体
-            const deadMember = this.members().find(e => e.isDead());
-            if (deadMember) {
-                this.secReuseEnemy(deadMember, enemyId, summoner, animId);
+                if (allMatch) {
+                    rate *= bonusRate;
+                }
             }
-            return; 
         }
-
-        // 3. 新增敌人
-        this.secAddEnemy(enemyId, summoner, animId);
+        return rate;
     };
 
-    // 复用尸体
-    Game_Troop.prototype.secReuseEnemy = function(enemy, newId, summoner, animId) {
-        enemy.transform(newId);
+    // ======================================================================
+    // 2. 技能效果扩展 (Snapshot & Custom Script)
+    // ======================================================================
+    const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
+    Game_Action.prototype.applyItemUserEffect = function(target) {
+        _Game_Action_applyItemUserEffect.call(this, target);
         
-        // 重置位置
-        if (summoner && summoner.isAlive()) {
-            const pos = this.calcSummonPos(summoner);
-            enemy._screenX = pos.x;
-            enemy._screenY = pos.y;
+        const item = this.item();
+        if (!item) return;
+
+        const subject = this.subject();
+        const note = item.note;
+
+        // --- 召唤模块 ---
+        const uniqueMatches = note.matchAll(/<SummonUnique[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
+        for (const match of uniqueMatches) {
+            $gameTroop.requestSummonEnqueue(parseInt(match[1]), true, subject, match[2]?parseInt(match[2]):0);
+        }
+        const forceMatches = note.matchAll(/<SummonForce[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
+        for (const match of forceMatches) {
+            $gameTroop.requestSummonEnqueue(parseInt(match[1]), false, subject, match[2]?parseInt(match[2]):0);
         }
 
-        enemy.setHp(enemy.mhp);
-        enemy.setMp(enemy.mmp);
-        enemy.setTp(0);
-        enemy.removeState(enemy.deathStateId());
-        enemy.removeAllBuffs();
-        enemy.appear();
-        enemy.onBattleStart(); 
-        this.makeUniqueNames();
-        
-        // 播放动画
-        if (animId > 0) {
-            $gameTemp.requestAnimation([enemy], animId);
+        // --- 快照模块 (Snapshot) ---
+        // <Snapshot: Record, Slot1>
+        const snapshotMatches = note.matchAll(/<Snapshot[:：]\s*(Record|Restore)\s*[,，]\s*(\w+)\s*>/gi);
+        for (const match of snapshotMatches) {
+            const mode = match[1].toLowerCase();
+            const key = match[2];
+            
+            // 记录 (绑定在 target 身上，通常 target=self)
+            if (mode === 'record') {
+                target._secSnapshots = target._secSnapshots || {};
+                target._secSnapshots[key] = {
+                    hp: target.hp,
+                    mp: target.mp,
+                    tp: target.tp
+                };
+                // 视觉反馈
+                if (target.startCustomPopupConfig) {
+                    target.startCustomPopupConfig({ text: "Time Anchor", color: "#88AAFF", style: "pulse", wait: 40 });
+                }
+            } 
+            // 恢复
+            else if (mode === 'restore') {
+                if (target._secSnapshots && target._secSnapshots[key]) {
+                    const data = target._secSnapshots[key];
+                    // 仅当当前血量低于记录时才回溯 (根据文档需求)
+                    if (target.hp < data.hp) {
+                        target.setHp(data.hp);
+                        target.setMp(data.mp); // 蓝量是否回溯视需求而定，这里一并回溯
+                        // target.setTp(data.tp); // TP通常不回溯
+                        if (target.startCustomPopupConfig) {
+                            target.startCustomPopupConfig({ text: "Time Revert", color: "#FFFFFF", style: "rise", wait: 60 });
+                        }
+                        // 播放一个通用的回复动画
+                        $gameTemp.requestAnimation([target], 49); 
+                    }
+                }
+            }
         }
 
-        this.secTriggerSummonPassive(enemy);
-    };
-
-    // 新增敌人
-    Game_Troop.prototype.secAddEnemy = function(enemyId, summoner, animId) {
-        let x, y;
-        if (summoner && summoner.isAlive()) {
-            const pos = this.calcSummonPos(summoner);
-            x = pos.x;
-            y = pos.y;
-        } else {
-            // 兜底随机 (如果召唤者死了)
-            x = 100 + Math.randomInt(600);
-            y = 250 + Math.randomInt(200);
-        }
-
-        const enemy = new Game_Enemy(enemyId, x, y);
-        enemy.onBattleStart();
-        this._enemies.push(enemy);
-        this.makeUniqueNames();
-
-        if (SceneManager._scene instanceof Scene_Battle) {
-            SceneManager._scene.secAddEnemySprite(enemy);
-        }
-
-        // 播放动画
-        if (animId > 0) {
-            // 稍作延迟以确保 Sprite 已创建
-            setTimeout(() => {
-                $gameTemp.requestAnimation([enemy], animId);
-            }, 1);
-        }
-
-        this.secTriggerSummonPassive(enemy);
-    };
-
-    // 计算位置 (左右交替 + 距离递增 + 仅向下偏移)
-    Game_Troop.prototype.calcSummonPos = function(summoner) {
-        if (typeof summoner._secSummonCount === 'undefined') {
-            summoner._secSummonCount = 0;
-        }
-        summoner._secSummonCount++;
-        
-        const count = summoner._secSummonCount;
-        // 左右交替 (-1, 1, -1, 1...)
-        const dir = (count % 2 !== 0) ? -1 : 1; 
-        // 距离递增
-        const dist = SUMMON_DIST_X + (count - 1) * SUMMON_DIST_STEP;
-
-        const center = getBattlerPos(summoner);
-        
-        let x = center.x + dir * dist;
-        // [v1.6] 仅向下偏移 (保证召唤物在 Boss 前面/下方)
-        let y = center.y + Math.random() * SUMMON_RANGE_Y;
-
-        x = x.clamp(50, Graphics.boxWidth - 50);
-        y = y.clamp(100, Graphics.boxHeight - 50);
-
-        return { x: Math.round(x), y: Math.round(y) };
-    };
-
-    Game_Troop.prototype.secTriggerSummonPassive = function(enemy) {
-        const data = enemy.enemy();
-        if (data && data.note) {
-            const match = data.note.match(/<SummonState[:：]\s*(\d+)\s*>/);
-            if (match) {
-                const stateId = parseInt(match[1]);
-                enemy.addState(stateId);
+        // --- 自定义脚本模块 (Custom Effect) ---
+        // <CustomEffect: if(b.hp>0) b.gainHp(-100)>
+        // 变量: a=subject, b=target, v=$gameVariables
+        const scriptMatches = note.matchAll(/<CustomEffect[:：]\s*(.+)\s*>/gi);
+        for (const match of scriptMatches) {
+            try {
+                const a = subject;
+                const b = target;
+                const v = $gameVariables;
+                eval(match[1]);
+            } catch (e) {
+                console.error("Sec_BossMechanics CustomEffect Error:", e);
             }
         }
     };
 
     // ======================================================================
-    // 1. 条件技能
+    // 3. 条件技能 (Conditional Skill)
     // ======================================================================
     const _BattleManager_startAction = BattleManager.startAction;
     BattleManager.startAction = function(subject, action, targets) {
@@ -289,33 +235,48 @@
         if (realAction && realAction.item()) {
             this.processConditionalSkill(realSubject, realAction);
         }
-        
         _BattleManager_startAction.call(this, subject, action, targets);
     };
 
     BattleManager.processConditionalSkill = function(subject, action) {
         const item = action.item();
         const note = item.note;
-        const match = note.match(/<ConditionCheck[:：]\s*ids=\[([\d,，\s]+)\]\s*[,，]\s*true=(\d+)\s*[,，]\s*false=(\d+)\s*>/i);
         
-        if (match) {
-            const ids = match[1].split(/[,，]/).map(Number);
-            const trueSkillId = parseInt(match[2]);
-            const falseSkillId = parseInt(match[3]);
-
+        // ID 检测
+        const idMatch = note.match(/<ConditionCheck[:：]\s*ids=\[([\d,，\s]+)\]\s*[,，]\s*true=(\d+)\s*[,，]\s*false=(\d+)\s*>/i);
+        if (idMatch) {
+            const ids = idMatch[1].split(/[,，]/).map(Number);
+            const trueSkillId = parseInt(idMatch[2]);
+            const falseSkillId = parseInt(idMatch[3]);
             const troops = $gameTroop.aliveMembers();
             const allExist = ids.every(id => troops.some(enemy => enemy.enemyId() === id));
-
             const targetSkillId = allExist ? trueSkillId : falseSkillId;
-            
-            if (targetSkillId > 0) {
-                action.setSkill(targetSkillId);
+            if (targetSkillId > 0) action.setSkill(targetSkillId);
+            return;
+        }
+
+        // Meta 检测 (种族检测)
+        const metaMatch = note.match(/<ConditionCheck[:：]\s*meta=(\w+)\s*[,，]\s*value=(\w+)\s*[,，]\s*count=(\w+)\s*[,，]\s*true=(\d+)\s*[,，]\s*false=(\d+)\s*>/i);
+        if (metaMatch) {
+            const metaKey = metaMatch[1];
+            const metaVal = metaMatch[2];
+            const countMode = metaMatch[3].toLowerCase(); // all or any
+            const trueSkillId = parseInt(metaMatch[4]);
+            const falseSkillId = parseInt(metaMatch[5]);
+            const troops = $gameTroop.aliveMembers();
+            let conditionMet = false;
+            if (countMode === 'all') {
+                conditionMet = troops.length > 0 && troops.every(member => member.enemy().meta[metaKey] === metaVal);
+            } else {
+                conditionMet = troops.some(member => member.enemy().meta[metaKey] === metaVal);
             }
+            const targetSkillId = conditionMet ? trueSkillId : falseSkillId;
+            if (targetSkillId > 0) action.setSkill(targetSkillId);
         }
     };
 
     // ======================================================================
-    // 2. 状态移除触发
+    // 4. 状态移除触发
     // ======================================================================
     const _Game_Battler_removeState = Game_Battler.prototype.removeState;
     Game_Battler.prototype.removeState = function(stateId) {
@@ -338,53 +299,114 @@
     };
 
     // ======================================================================
-    // 3. 召唤系统 - 技能挂钩
+    // 5. 召唤系统逻辑
     // ======================================================================
-    const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
-    Game_Action.prototype.applyItemUserEffect = function(target) {
-        _Game_Action_applyItemUserEffect.call(this, target);
-        
-        const item = this.item();
-        if (!item) return;
-
-        const subject = this.subject();
-
-        // 匹配 Unique 召唤
-        const uniqueMatches = item.note.matchAll(/<SummonUnique[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
-        for (const match of uniqueMatches) {
-            const enemyId = parseInt(match[1]);
-            const animId = match[2] ? parseInt(match[2]) : 0;
-            $gameTroop.requestSummonEnqueue(enemyId, true, subject, animId);
+    const _Game_Troop_initialize = Game_Troop.prototype.initialize;
+    Game_Troop.prototype.initialize = function() {
+        _Game_Troop_initialize.call(this);
+        this.clearSummonQueue();
+    };
+    const _Game_Troop_clear = Game_Troop.prototype.clear;
+    Game_Troop.prototype.clear = function() {
+        _Game_Troop_clear.call(this);
+        this.clearSummonQueue();
+    };
+    Game_Troop.prototype.clearSummonQueue = function() {
+        this._secSummonQueue = [];
+        this._secSummonTimer = 0;
+    };
+    Game_Troop.prototype.requestSummonEnqueue = function(enemyId, isUnique, summoner, animId) {
+        this._secSummonQueue.push({ enemyId, isUnique, summoner, animId });
+    };
+    Game_Troop.prototype.updateSecSummon = function() {
+        if (this._secSummonTimer > 0) {
+            this._secSummonTimer--;
+            return;
         }
-
-        // 匹配 Force 召唤
-        const forceMatches = item.note.matchAll(/<SummonForce[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
-        for (const match of forceMatches) {
-            const enemyId = parseInt(match[1]);
-            const animId = match[2] ? parseInt(match[2]) : 0;
-            $gameTroop.requestSummonEnqueue(enemyId, false, subject, animId);
+        if (this._secSummonQueue.length > 0) {
+            const req = this._secSummonQueue.shift();
+            this.secExecuteSummon(req);
+            this._secSummonTimer = SUMMON_INTERVAL;
+        }
+    };
+    Game_Troop.prototype.secExecuteSummon = function(req) {
+        const { enemyId, isUnique, summoner, animId } = req;
+        if (isUnique) {
+            const exists = this.members().some(e => e.enemyId() === enemyId && e.isAlive());
+            if (exists) return;
+        }
+        if (this.members().length >= 8) {
+            const deadMember = this.members().find(e => e.isDead());
+            if (deadMember) this.secReuseEnemy(deadMember, enemyId, summoner, animId);
+            return; 
+        }
+        this.secAddEnemy(enemyId, summoner, animId);
+    };
+    Game_Troop.prototype.secReuseEnemy = function(enemy, newId, summoner, animId) {
+        enemy.transform(newId);
+        if (summoner && summoner.isAlive()) {
+            const pos = this.calcSummonPos(summoner);
+            enemy._screenX = pos.x;
+            enemy._screenY = pos.y;
+        }
+        enemy.setHp(enemy.mhp);
+        enemy.setMp(enemy.mmp);
+        enemy.setTp(0);
+        enemy.removeState(enemy.deathStateId());
+        enemy.removeAllBuffs();
+        enemy.appear();
+        enemy.onBattleStart(); 
+        this.makeUniqueNames();
+        if (animId > 0) $gameTemp.requestAnimation([enemy], animId);
+        this.secTriggerSummonPassive(enemy);
+    };
+    Game_Troop.prototype.secAddEnemy = function(enemyId, summoner, animId) {
+        let x, y;
+        if (summoner && summoner.isAlive()) {
+            const pos = this.calcSummonPos(summoner);
+            x = pos.x;
+            y = pos.y;
+        } else {
+            x = 100 + Math.randomInt(600);
+            y = 250 + Math.randomInt(200);
+        }
+        const enemy = new Game_Enemy(enemyId, x, y);
+        enemy.onBattleStart();
+        this._enemies.push(enemy);
+        this.makeUniqueNames();
+        if (SceneManager._scene instanceof Scene_Battle) SceneManager._scene.secAddEnemySprite(enemy);
+        if (animId > 0) setTimeout(() => { $gameTemp.requestAnimation([enemy], animId); }, 1);
+        this.secTriggerSummonPassive(enemy);
+    };
+    Game_Troop.prototype.calcSummonPos = function(summoner) {
+        if (typeof summoner._secSummonCount === 'undefined') summoner._secSummonCount = 0;
+        summoner._secSummonCount++;
+        const count = summoner._secSummonCount;
+        const dir = (count % 2 !== 0) ? -1 : 1; 
+        const dist = SUMMON_DIST_X + (count - 1) * SUMMON_DIST_STEP;
+        const center = getBattlerPos(summoner);
+        let x = center.x + dir * dist;
+        let y = center.y + Math.random() * SUMMON_RANGE_Y;
+        x = x.clamp(50, Graphics.boxWidth - 50);
+        y = y.clamp(100, Graphics.boxHeight - 50);
+        return { x: Math.round(x), y: Math.round(y) };
+    };
+    Game_Troop.prototype.secTriggerSummonPassive = function(enemy) {
+        const data = enemy.enemy();
+        if (data && data.note) {
+            const match = data.note.match(/<SummonState[:：]\s*(\d+)\s*>/);
+            if (match) enemy.addState(parseInt(match[1]));
         }
     };
 
-    // ======================================================================
-    // BattleManager 更新循环挂钩
-    // ======================================================================
     const _BattleManager_update = BattleManager.update;
     BattleManager.update = function(timeActive) {
         _BattleManager_update.call(this, timeActive);
-        // 驱动召唤队列
-        if ($gameTroop) {
-            $gameTroop.updateSecSummon();
-        }
+        if ($gameTroop) $gameTroop.updateSecSummon();
     };
 
-    // ======================================================================
-    // 4. 精灵图动态创建
-    // ======================================================================
     Scene_Battle.prototype.secAddEnemySprite = function(enemy) {
-        if (this._spriteset) {
-            this._spriteset.secAddEnemy(enemy);
-        }
+        if (this._spriteset) this._spriteset.secAddEnemy(enemy);
     };
 
     Spriteset_Battle.prototype.secAddEnemy = function(enemy) {
