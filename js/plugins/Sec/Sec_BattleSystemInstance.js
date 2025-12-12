@@ -684,7 +684,7 @@
                 }
             }
 
-            // B3. 守护光环 (Fix: 增加伤害累计手动记录)
+            // B3. 守护光环 (Fix: 增加有效性检查，防止死后报错)
             if (actualDamage > 0) {
                 const friends = target.friendsUnit().members();
                 for (const guardian of friends) {
@@ -710,22 +710,32 @@
                                 try { guardianDmg = Math.floor(eval(formula)); } catch(e) {}
 
                                 setTimeout(() => {
+                                    // [Fix] 再次检查 target 是否存在
                                     if (target) {
-                                        _Sec_SuppressLog(target); target.gainHp(transferAmount);
-                                        target.result().hpDamage = -transferAmount;
-                                        target.result().hpAffected = true;
+                                        _Sec_SuppressLog(target); 
+                                        target.gainHp(transferAmount);
+                                        // 检查 result 是否存在 (防止对象已被销毁)
+                                        if (target.result()) {
+                                            target.result().hpDamage = -transferAmount;
+                                            target.result().hpAffected = true;
+                                        }
                                         target.startDamagePopup();
                                         target.performDamage(); 
                                         _Sec_PlayAnim(target, animId); 
                                     }
+                                    
                                     setTimeout(() => {
+                                        // [Fix] 再次检查 guardian 是否存在且有效
                                         if (guardian && guardian.isAlive()) {
-                                            _Sec_SuppressLog(guardian); guardian.gainHp(-guardianDmg);
-                                            guardian.result().hpDamage = guardianDmg;
-                                            guardian.result().hpAffected = true;
+                                            _Sec_SuppressLog(guardian); 
+                                            guardian.gainHp(-guardianDmg);
                                             
-                                            // [Fix] 手动为守护者累加伤害记录 (因为gainHp不触发Hit标签)
-                                            // 只有当受到的伤害为正数时才累加
+                                            if (guardian.result()) {
+                                                guardian.result().hpDamage = guardianDmg;
+                                                guardian.result().hpAffected = true;
+                                            }
+                                            
+                                            // 手动累加伤害记录
                                             if (guardianDmg > 0) {
                                                 guardian._secSinAccumulator = (guardian._secSinAccumulator || 0) + guardianDmg;
                                             }
@@ -742,6 +752,7 @@
                     }
                 }
             }
+            
         }
 
         // A3. 亡语 (添加视觉特效)
