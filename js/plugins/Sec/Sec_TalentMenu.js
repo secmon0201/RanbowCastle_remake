@@ -1,19 +1,26 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 天赋菜单系统 - 完美重置版 (Sort Order Fix v1.9.2)
+ * @plugindesc [系统] 天赋菜单系统 - 完美重置版 (Final: Full Legacy Script Support)
  * @author Secmon & Gemini
- * @version 1.9.2
+ * @version 1.9.4
  *
  * @help
  * ============================================================================
- * 🌈 彩虹城堡完美重置版 - 天赋菜单专属 UI (v1.9.2)
+ * 🌈 彩虹城堡完美重置版 - 天赋菜单专属 UI (v1.9.4)
  * ============================================================================
- * * 【本次更新】：
- * 1. 自定义菜单位置：
- * - 增加了参数 [插入位置]，你可以自由决定“天赋”按钮出现在哪里。
- * - 默认设定为：出现在 [技能] 选项的下方。
- * * 【历史修复】：
- * - 包含 v1.9.1 及之前所有的 UI 美化、防重叠、逻辑修复。
+ * * 【本次补全 (v1.9.4)】：
+ * 1. 完整脚本支持：
+ * - 补全了 disableSkill 和 disableSkills 接口。
+ * - 现在支持旧工程所有的激活、禁用、重置脚本指令。
+ * * * 【脚本指令大全 (兼容旧版)】：
+ * 1. 激活技能: 
+ * $gameActors.actor(1).enableSkills([301, 302]);
+ * 2. 禁用技能: 
+ * $gameActors.actor(1).disableSkills([301, 302]);
+ * 3. 修改SP上限: 
+ * $gameActors.actor(1).setSpMax(150);
+ * 4. 重置所有天赋: 
+ * $gameActors.actor(1).initSkillStates();
  *
  * ============================================================================
  * @param CommandName
@@ -51,7 +58,7 @@
     const params = PluginManager.parameters(pluginName);
     
     const cmdName = params.CommandName || "天赋";
-    const insertTarget = params.InsertTarget || "skill"; // 获取插入位置参数
+    const insertTarget = params.InsertTarget || "skill"; 
     const maxColumns = Number(params.MaxColumns) || 1; 
     const defaultSpMax = Number(params.DefaultSpMax) || 100;
 
@@ -134,8 +141,86 @@
         return _Game_Actor_skills.call(this).filter(skill => this.isSkillEnabled(skill.id));
     };
 
+    // ------------------------------------------------------------------------------
+    // 【核心修复】完整移植旧版接口：支持所有脚本指令
+    // ------------------------------------------------------------------------------
+    
+    // 1. 设置SP上限
+    Game_Actor.prototype.setSpMax = function(newMax) {
+        if (newMax > 0) {
+            this._spMax = newMax;
+            if (SceneManager._scene instanceof Scene_Menu && SceneManager._scene._actorInfoWindow) {
+                SceneManager._scene._actorInfoWindow.refresh();
+            }
+        }
+    };
+
+    // 2. 重置所有天赋状态
+    Game_Actor.prototype.initSkillStates = function() {
+        this.allSkills().forEach(skill => {
+            this._skillStates[skill.id] = false;
+        });
+        if (SceneManager._scene instanceof Scene_Menu && SceneManager._scene._talentListWindow) {
+            SceneManager._scene._talentListWindow.refresh();
+        }
+    };
+
+    // 3. 启用技能 (基础)
+    Game_Actor.prototype.enableSkill = function(skillId) {
+        if (!$dataSkills[skillId]) return false;
+        this._skillStates[skillId] = true;
+        
+        // 刷新UI
+        if (SceneManager._scene && SceneManager._scene.constructor.name === 'Scene_Menu' && SceneManager._scene._talentListWindow) {
+             SceneManager._scene._talentListWindow.refresh();
+        }
+        return true;
+    };
+
+    // 4. 启用技能 (数组兼容) - 修复你遇到的报错
+    Game_Actor.prototype.enableSkills = function(skillIds) {
+        if (Array.isArray(skillIds)) {
+            let successCount = 0;
+            skillIds.forEach(skillId => {
+                if (this.enableSkill(skillId)) successCount++;
+            });
+            return successCount;
+        } else if (typeof skillIds === 'number') {
+            this.enableSkill(skillIds);
+            return 1;
+        }
+        return 0;
+    };
+
+    // 5. 禁用技能 (基础) - 【本次新增补全】
+    Game_Actor.prototype.disableSkill = function(skillId) {
+        if (!$dataSkills[skillId]) return false;
+        this._skillStates[skillId] = false;
+        
+        if (SceneManager._scene && SceneManager._scene.constructor.name === 'Scene_Menu' && SceneManager._scene._talentListWindow) {
+             SceneManager._scene._talentListWindow.refresh();
+        }
+        return true;
+    };
+
+    // 6. 禁用技能 (数组兼容) - 【本次新增补全】
+    Game_Actor.prototype.disableSkills = function(skillIds) {
+        if (Array.isArray(skillIds)) {
+            let successCount = 0;
+            skillIds.forEach(skillId => {
+                if (this.disableSkill(skillId)) successCount++;
+            });
+            return successCount;
+        } else if (typeof skillIds === 'number') {
+            this.disableSkill(skillIds);
+            return 1;
+        }
+        return 0;
+    };
+    // ------------------------------------------------------------------------------
+
     // ==============================================================================
-    // 模块 2: UI 绘制基类 & 组件
+    // 模块 2: UI 绘制基类 & 组件 (保持视觉效果完全不变)
     // ==============================================================================
 
     class Window_TalentBase extends Window_Base {

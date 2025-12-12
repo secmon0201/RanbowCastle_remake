@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 菜单界面UI完全重绘 & 新存档界面 & 二级菜单重绘
+ * @plugindesc [系统] 菜单界面UI完全重绘 & 新存档界面 & 全局渐变光标 (彩虹城堡重置版专用)
  * @author 神枪手 & Gemini Optimization
  *
  * @param enableLoadCommand
@@ -9,17 +9,43 @@
  * @default true
  * @desc 是否在主菜单命令窗口中添加“读档”选项。
  *
+ * @param --- Cursor Settings ---
+ * @text [光标设置]
+ *
+ * @param CursorColorStart
+ * @parent --- Cursor Settings ---
+ * @text 渐变起始色
+ * @desc 选中项背景渐变的起始颜色 (CSS格式)
+ * @default rgba(255, 215, 0, 0.25)
+ *
+ * @param CursorColorEnd
+ * @parent --- Cursor Settings ---
+ * @text 渐变结束色
+ * @desc 选中项背景渐变的结束颜色 (CSS格式)
+ * @default rgba(0, 0, 0, 0)
+ *
+ * @param CursorBorderColor
+ * @parent --- Cursor Settings ---
+ * @text 边框颜色
+ * @desc 选中项边框的颜色 (CSS格式)
+ * @default rgba(255, 215, 0, 0.6)
+ *
  * @help
  * ============================================================================
- * 插件说明 (Plugin Description)
+ * 🌈 彩虹城堡重置版 - UI 核心系统 (v2.0 融合版)
  * ============================================================================
  * 本插件是专为《彩虹城堡》重制版定制的UI核心系统。
- * 它深度重写了 RMMZ 的 Window 和 Scene 类，以适配 480x854 的竖屏分辨率。
- * * 主要特性：
- * 1. 核心绘图：重写 Sprite_Gauge 实现荧光风格计量槽。
- * 2. 主菜单：重构 Window_MenuStatus，实现大头像(144px)紧贴布局。
- * 3. 二级场景：全覆盖重写 (Item, Skill, Equip, Status, Shop, Save)。
- * 4. 视觉风格：强制不透明背景，模拟 J2ME 时代的硬朗UI风格。
+ * 已集成 Sq_GlobalGradientCursor 的全部功能。
+ * * * 适配分辨率: 480x854 (竖屏)
+ *
+ * ============================================================================
+ * ✨ 包含功能 (Features)
+ * ============================================================================
+ * 1. [UI重构] 主菜单、物品、技能、装备、状态、存档、商店界面全重写。
+ * 2. [视觉风格] 强制不透明背景，模拟 J2ME 硬朗风格。
+ * 3. [组件] 荧光风格计量槽 (HP/MP/TP)。
+ * 4. [交互] 全局金黄色渐变光标 (自动替换系统默认闪烁框)。
+ * 5. [优化] 列表滚动性能优化，防止手机端掉帧。
  *
  * ============================================================================
  * 资源依赖 (Resources)
@@ -40,20 +66,23 @@
     // 获取插件参数
     const pluginParams = PluginManager.parameters('Sq_MenuUI');
     const enableLoadCommand = pluginParams.enableLoadCommand === 'true';
+    
+    // 光标颜色配置 (J2ME 金色风格)
+    const CURSOR_CONFIG = {
+        color1: pluginParams.CursorColorStart || "rgba(255, 215, 0, 0.25)",
+        color2: pluginParams.CursorColorEnd   || "rgba(0, 0, 0, 0)",
+        border: pluginParams.CursorBorderColor || "rgba(255, 215, 0, 0.6)"
+    };
 
     // ========================================================================
     // [Core Module] 资源预加载与系统初始化
-    // 继承: Scene_Boot
     // ========================================================================
     const _Scene_Boot_loadSystemImages = Scene_Boot.prototype.loadSystemImages;
     Scene_Boot.prototype.loadSystemImages = function() {
         _Scene_Boot_loadSystemImages.call(this);
-        // 加载窗口皮肤颜色配置
         ColorManager.loadWindowskin();
-        // 加载图标集
         ImageManager.loadSystem("IconSet");
         
-        // [RMMZ API] ImageManager.loadPicture 用于加载 img/pictures 资源
         // 加载 UI 核心图标组件
         ImageManager.loadPicture("hpicon");
         ImageManager.loadPicture("mpicon");
@@ -69,22 +98,19 @@
 
     // ========================================================================
     // [UI Component] Sprite_MenuGauge (荧光风格计量槽)
-    // 继承: Sprite_Gauge (rmmz_sprites.js)
     // ========================================================================
     class Sprite_MenuGauge extends Sprite_Gauge {
         constructor() {
             super();
         }
 
-        // [Layout] 宽度适配右侧窗口 (窗口宽340 - 头像144 - padding)
+        // [Layout] 宽度适配右侧窗口
         bitmapWidth() { return 145; } 
         bitmapHeight() { return 32; }
-        gaugeHeight() { return 14; } // 增加厚度以适应图标
+        gaugeHeight() { return 14; }
 
-        // [Color] 计量槽背景色
         gaugeBackColor() { return "#202020"; }
 
-        // [Color] 渐变色起始值 (荧光色系)
         gaugeColor1() {
             switch (this._statusType) {
                 case "hp": return "#ff6b6b"; // 亮红
@@ -94,7 +120,6 @@
             }
         }
 
-        // [Color] 渐变色结束值
         gaugeColor2() {
             switch (this._statusType) {
                 case "hp": return "#ff9f43"; // 橙色过渡
@@ -104,26 +129,21 @@
             }
         }
 
-        // [Draw] 重写槽体绘制，添加半透明底板
         drawGaugeRect(x, y, width, height) {
             this.bitmap.fillRect(x, y, width, height, "rgba(0,0,0,0.5)");
             super.drawGaugeRect(x + 1, y + 1, width - 2, height - 2);
         }
 
-        // [Draw] 绘制左侧图标 (覆盖原本的 HP/MP 文字标签)
         drawLabel() {
             const iconName = this.gaugeIcon();
             if (!iconName) return;
             const bitmap = ImageManager.loadPicture(iconName);
             const iconX = 0; 
-            const iconY = 12; // 图标垂直居中校正
+            const iconY = 12; 
             const iconSize = 12; 
             
             const drawIcon = () => {
-                // [Fix] 这里的修复防止对象销毁后继续绘制导致崩溃
                 if (!this.bitmap || !this.bitmap.context) return;
-
-                // 使用 blt 进行位图传输
                 this.bitmap.blt(bitmap, 0, 0, bitmap.width, bitmap.height, iconX, iconY, iconSize, iconSize);
             };
 
@@ -134,7 +154,6 @@
             }
         }
 
-        // 辅助方法：获取对应类型的图标文件名
         gaugeIcon() {
             switch (this._statusType) {
                 case "hp": return "hpicon";
@@ -144,7 +163,6 @@
             }
         }
 
-        // [Draw] 绘制数值 (格式: 当前值 / 最大值)
         drawValue() {
             const currentValue = this.currentValue();
             const currentMaxValue = this.currentMaxValue();
@@ -153,26 +171,21 @@
             let str = `/${currentMaxValue}`;
             let maxValueWidth = this.bitmap.measureTextWidth(str);
             
-            // 绘制当前值 (高亮)
             this.bitmap.textColor = "rgba(255, 255, 255, 1)";
             this.bitmap.fontSize = 18; 
             this.bitmap.drawText(currentValue, 0, -4, width - maxValueWidth + 2, height, "right");
             
-            // 绘制最大值 (半透明)
             this.bitmap.textColor = "rgba(255, 255, 255, 0.7)";
             this.bitmap.fontSize = 12;
             this.bitmap.drawText(`/${currentMaxValue}`, width - maxValueWidth, -2, maxValueWidth, height, "right");
         }
     }
-    // 将自定义类挂载到全局，供 Window 类调用
     window.Sprite_MenuGauge = Sprite_MenuGauge;
 
     // ========================================================================
     // [Module 1] 主菜单与通用背景 (Main Menu & Background)
-    // 继承: Scene_MenuBase, Scene_Menu
     // ========================================================================
 
-    // 重写背景生成：使用图片替代截图模糊
     Scene_MenuBase.prototype.createBackground = function() {
         this._backgroundFilter = new PIXI.filters.BlurFilter();
         this._backgroundSprite = new Sprite();
@@ -182,25 +195,22 @@
         this.setBackgroundOpacity(255);
     };
 
-    // [Layout] 主菜单命令窗口布局
     Scene_Menu.prototype.commandWindowRect = function() {
         const ww = 140;
         const wh = 490; 
         const wx = 0;
-        const wy = -5; // 顶部微调
+        const wy = -5;
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // [Layout] 主菜单状态窗口布局 (右侧大块区域)
     Scene_Menu.prototype.statusWindowRect = function() {
-        const ww = 340; // 480(屏宽) - 140(命令宽)
+        const ww = 340; 
         const wh = 854; 
         const wx = 140;
         const wy = -5;
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // [Layout] 金币窗口布局 (左下角)
     Scene_Menu.prototype.goldWindowRect = function() {
         const ww = 144;    
         const wh = 70;     
@@ -209,7 +219,6 @@
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // 金币窗口刷新逻辑：调整字号
     Window_Gold.prototype.refresh = function() {
         const rect = this.itemLineRect(0);
         this.contents.clear();
@@ -221,7 +230,6 @@
 
     // ========================================================================
     // [Module 1.1] 主菜单状态绘制 (Window_MenuStatus 重构)
-    // 核心逻辑：紧贴边框排版与防溢出处理
     // ========================================================================
     Window_MenuStatus.prototype.maxCols = function () { return 1; };
     Window_MenuStatus.prototype.numVisibleRows = function() { return 4; };
@@ -233,38 +241,35 @@
         return $gameParty.members().length;
     };
 
-    // [Override] 重写列表项绘制流程
     Window_MenuStatus.prototype.drawItem = function(index) {
+        // 【关键改动】主动调用 drawItemBackground 以触发渐变光标
+        this.drawItemBackground(index);
+
         const rect = this.itemRect(index);
         const faceSize = 144; 
         
-        // 计算垂直居中偏移
         const offsetY = Math.floor((rect.height - faceSize) / 2); 
 
-        // 缓存布局参数，供子绘制函数使用
         this._tempParams = { 
             faceSize: faceSize,
             offsetY: offsetY,
-            faceX: rect.x + 4, // 稍微靠左
+            faceX: rect.x + 4, 
             faceY: rect.y + offsetY
         };
 
         this.drawPendingItemBackground(index);
-        this.drawItemImage(index);   // 绘制头像
-        this.drawSlotCardBg(index);  // 绘制头像边框 (装饰层)
-        this.drawItemStatus(index);  // 绘制右侧状态信息
+        this.drawItemImage(index);   
+        this.drawSlotCardBg(index);  
+        this.drawItemStatus(index);  
     };
 
-    // 绘制头像
     Window_MenuStatus.prototype.drawItemImage = function(index) {
         const actor = this.actor(index);
         const p = this._tempParams;
         if (!actor || !p) return;
-        
         this.drawActorFace(actor, p.faceX, p.faceY, p.faceSize, p.faceSize);
     };
 
-    // [New] 绘制头像装饰边框 (J2ME风格关键)
     Window_MenuStatus.prototype.drawSlotCardBg = function(index) {
         const p = this._tempParams;
         if (!p) return;
@@ -272,65 +277,53 @@
         const y = p.faceY;
         const s = p.faceSize;
 
-        // 金色主框
         this.contents.strokeRect(x, y, s, s, "rgba(255, 215, 0, 0.8)"); 
-        // 外部阴影框
         this.contents.strokeRect(x - 1, y - 1, s + 2, s + 2, "rgba(0, 0, 0, 0.5)"); 
     };
 
-    // [Override] 绘制右侧详细信息
     Window_MenuStatus.prototype.drawItemStatus = function(index) {
         const actor = this.actor(index);
         const p = this._tempParams;
         if (!actor || !p) return;
         
-        // --- 坐标定义 ---
-        const dataX = p.faceX + p.faceSize + 10; // 头像右侧 + 间距
+        const dataX = p.faceX + p.faceSize + 10; 
         const startY = p.faceY; 
 
-        // --- Row 1: 角色名字 ---
+        // Row 1: 名字
         this.contents.fontSize = 26; 
         this.contents.fontBold = true; 
-        this.changeTextColor('#FFD700'); // 金色高亮
+        this.changeTextColor('#FFD700'); 
         this.drawText(actor.name(), dataX, startY, 150);
         this.contents.fontBold = false; 
 
-        // --- Row 2: 等级与职业 ---
+        // Row 2: 等级/职业
         const row2Y = startY + 32;
-        
-        // (A) 等级图标
         const lvIcon = ImageManager.loadPicture("lvicon");
         const lvIconX = dataX;
         const lvIconY = row2Y + 12; 
         
         const drawLvStuff = () => {
-            // [Fix] 防止窗口关闭后回调执行导致崩溃
             if (!this.contents || !this.contents.context) return;
-
-            // 绘制图标
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, lvIconX, lvIconY);
             
-            // (B) 等级数字
             const numX = lvIconX + 24; 
             this.resetTextColor();
             this.contents.fontSize = 20;
-            this.changeTextColor('#00FFFF'); // 青色
+            this.changeTextColor('#00FFFF'); 
             this.drawText(actor.level, numX, row2Y + 2, 40);
 
-            // (C) 职业名称
             const classX = numX + 36; 
             this.contents.fontSize = 16;
-            this.changeTextColor("rgba(200, 200, 200, 0.8)"); // 浅灰
+            this.changeTextColor("rgba(200, 200, 200, 0.8)"); 
             this.drawText(actor.currentClass().name, classX, row2Y + 4, 100);
         };
 
         if (lvIcon.width > 0) drawLvStuff(); else lvIcon.addLoadListener(drawLvStuff);
 
-        // --- Row 3 & 4: 计量槽 ---
+        // Row 3 & 4: 计量槽
         let gaugeY = row2Y + 34;
         const gaugeSpacing = 32;
 
-        // 调用自定义的 Sprite_MenuGauge
         this.placeGauge(actor, "hp", dataX, gaugeY);
         this.placeGauge(actor, "mp", dataX, gaugeY + gaugeSpacing); 
         
@@ -339,7 +332,6 @@
         }
     };
 
-    // 实例化计量槽精灵
     Window_MenuStatus.prototype.placeGauge = function(actor, type, x, y) {
         const key = `actor${actor.actorId()}-gauge-${type}`;
         const sprite = this.createInnerSprite(key, Sprite_MenuGauge);
@@ -351,8 +343,6 @@
     // ========================================================================
     // [Module 2] 菜单命令扩展 (读档功能)
     // ========================================================================
-    
-    // 向菜单列表注入 Load 命令
     const _Window_MenuCommand_makeCommandList = Window_MenuCommand.prototype.makeCommandList;
     Window_MenuCommand.prototype.makeCommandList = function() {
         _Window_MenuCommand_makeCommandList.call(this);
@@ -370,7 +360,6 @@
         return !$gameParty.inBattle();
     };
 
-    // 绑定 Handler
     const _Scene_Menu_createCommandWindow = Scene_Menu.prototype.createCommandWindow;
     Scene_Menu.prototype.createCommandWindow = function() {
         _Scene_Menu_createCommandWindow.call(this);
@@ -386,10 +375,8 @@
 
    // ========================================================================
     // [Module 3] 二级菜单重构 (Skill, Item 等)
-    // 特点：左窄右宽布局，超大底部说明窗口
     // ========================================================================
 
-    // [Layout] 角色选择窗口 (用于技能/物品的目标选择)
     Window_MenuActor.prototype.initialize = function(rect) {
         rect.x = 0;
         rect.y = 0;
@@ -399,17 +386,13 @@
         this.hide();
     };
 
-    // [Layout] 技能列表 (Window_SkillList)
     const _original_Window_SkillList_initialize = Window_SkillList.prototype.initialize;
     Window_SkillList.prototype.initialize = function(rect) {
         if (SceneManager._scene instanceof Scene_Skill) {
             rect.x = 0;        
-            rect.y = 180; // 紧接上方状态窗口
+            rect.y = 180; 
             rect.width = 480;
-            
-            // 固定显示6行高度
             rect.height = 240; 
-            
             Window_Selectable.prototype.initialize.call(this, rect);
             this._actor = null;
             this._stypeId = 0;
@@ -419,25 +402,21 @@
         }
     };
 
-    // [Layout] 技能类型窗口 (Window_SkillType) - 右上角
     Window_SkillType.prototype.initialize = function(rect) {
         const typeWidth = 110; 
-        
         rect.width = typeWidth;    
-        rect.x = Graphics.boxWidth - typeWidth; // 靠右对齐
+        rect.x = Graphics.boxWidth - typeWidth; 
         rect.y = 0;         
         rect.height = 180;   
         Window_Command.prototype.initialize.call(this, rect);
         this._actor = null;
     };
 
-    // [Layout] 技能状态窗口 (Window_SkillStatus) - 左上角
     Window_SkillStatus.prototype.initialize = function(rect) {
         const typeWidth = 110; 
-
         rect.x = 0;                
         rect.y = 0;               
-        rect.width = Graphics.boxWidth - typeWidth; // 填满左侧剩余空间      
+        rect.width = Graphics.boxWidth - typeWidth; 
         rect.height = 180;
         Window_StatusBase.prototype.initialize.call(this, rect);
         this._actor = null;
@@ -457,52 +436,41 @@
         }
     };
 
-    // [Draw] 技能界面的角色状态绘制 (包含职业显示)
     Window_SkillStatus.prototype.drawCurrentActorStatus = function() {
         const actor = this._actor;
         if (!actor) return;
 
-        // 1. 布局参数
         const faceSize = 144;
         const faceY = Math.floor((this.innerHeight - faceSize) / 2); 
         const faceX = 6; 
 
-        // 2. 绘制头像与装饰框
         this.contents.fillRect(faceX, faceY, faceSize, faceSize, "rgba(0, 0, 0, 0.6)");
         this.contents.strokeRect(faceX, faceY, faceSize, faceSize, "rgba(255, 215, 0, 0.8)");
         this.contents.strokeRect(faceX - 1, faceY - 1, faceSize + 2, faceSize + 2, "rgba(0, 0, 0, 0.5)");
 
-        // 3. 绘制头像
         this.drawActorFace(actor, faceX, faceY, faceSize, faceSize);
 
-        // 4. 右侧信息绘制
         const dataX = faceX + faceSize + 16; 
         const startY = faceY; 
 
-        // [名字]
         this.contents.fontSize = 26;
         this.contents.fontBold = true;
         this.changeTextColor('#FFD700'); 
         this.drawText(actor.name(), dataX, startY, 180); 
         this.contents.fontBold = false;
 
-        // [等级图标 + 数字 + 职业]
         const row2Y = startY + 32;
-        
-        // (A) 图标
         const lvIcon = ImageManager.loadPicture("lvicon");
         const lvIconY = row2Y + 12; 
         
         const drawLv = () => {
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, dataX, lvIconY);
             
-            // (B) 等级数字
             this.resetTextColor();
             this.contents.fontSize = 20; 
             this.changeTextColor('#00FFFF'); 
             this.drawText(actor.level, dataX + 24, row2Y + 2, 40);
 
-            // (C) 职业名称
             this.contents.fontSize = 16; 
             this.changeTextColor("rgba(200, 200, 200, 0.8)"); 
             this.drawText(actor.currentClass().name, dataX + 60, row2Y + 4, 120);
@@ -510,7 +478,6 @@
         
         if (lvIcon.width > 0) drawLv(); else lvIcon.addLoadListener(drawLv);
 
-        // [计量槽]
         let gaugeY = row2Y + 34;
         const gaugeSpacing = 32;
 
@@ -522,7 +489,6 @@
         }
     };
 
-    // 精灵绑定辅助
     Window_SkillStatus.prototype.placeGauge = function(actor, type, x, y) {
         const key = `skill-status-${actor.actorId()}-${type}`;
         const sprite = this.createInnerSprite(key, Sprite_MenuGauge);
@@ -535,8 +501,7 @@
         return 24; 
     };
 
-    // --- 技能帮助/故事窗口 (Window_SkillHelp) ---
-    // 特点：支持 itemStory 元数据，自定义字体颜色和大小
+    // --- 技能帮助/故事窗口 ---
     function Window_SkillHelp() {
         this.initialize(...arguments);
     }
@@ -571,7 +536,6 @@
         this.contents.clear();
         if (!this._item) return;
 
-        // 优先读取 <skillStory> 或 <itemStory> 标签内容
         let text = this._item.meta.skillStory || this._item.meta.itemStory;
         if (!text) {
             text = this._item.description;
@@ -581,7 +545,6 @@
         let y = this.padding;
         this.contents.fontSize = Window_SkillHelp.storyContentSize;
         
-        // 故事描述使用金色，普通描述使用白色
         if (this._item.meta.skillStory || this._item.meta.itemStory) {
             this.changeTextColor("#e6c510");
         } else {
@@ -591,18 +554,16 @@
         this.drawTextEx(text, this.padding, y, this.contents.width - this.padding * 2);
     };
 
-    // 注册帮助窗口到场景
     Scene_Skill.prototype.createHelpWindow = function() {
         const wx = 0;
-        const wy = 420; // 顶部180 + 列表240
+        const wy = 420; 
         const ww = Graphics.boxWidth;
-        const wh = Graphics.boxHeight - wy; // 占据底部剩余空间
+        const wh = Graphics.boxHeight - wy; 
         
         this._helpWindow = new Window_SkillHelp(new Rectangle(wx, wy, ww, wh));
         this.addWindow(this._helpWindow);
     };
 
-    // 关联帮助更新
     const _Window_SkillList_updateHelp = Window_SkillList.prototype.updateHelp;
     Window_SkillList.prototype.updateHelp = function() {
         if (SceneManager._scene instanceof Scene_Skill && this._helpWindow) {
@@ -620,13 +581,12 @@
 
     // ========================================================================
     // [Module 4] 装备界面重构 (Scene_Equip)
-    // 布局：状态(220) -> 指令(70) -> 槽位&物品(重叠) -> 底部故事
     // ========================================================================
 
     const SQ_EQUIP_CONFIG = {
-        statusH: 220,       // 状态窗口高度
-        cmdH: 70,           // 指令窗口高度
-        slotLines: 5,       // 槽位行数
+        statusH: 220,       
+        cmdH: 70,           
+        slotLines: 5,       
         faceSize: 144,      
         fontSize: {         
             name: 26,       
@@ -636,18 +596,15 @@
         }
     };
 
-    // 1. 状态窗口
     Scene_Equip.prototype.statusWindowRect = function() {
         return new Rectangle(0, 0, Graphics.boxWidth, SQ_EQUIP_CONFIG.statusH);
     };
 
-    // 2. 指令窗口
     Scene_Equip.prototype.commandWindowRect = function() {
         const sRect = this.statusWindowRect();
         return new Rectangle(0, sRect.height, Graphics.boxWidth, SQ_EQUIP_CONFIG.cmdH);
     };
 
-    // 3. 槽位窗口 (显示当前装备)
     Scene_Equip.prototype.slotWindowRect = function() {
         const cRect = this.commandWindowRect();
         const wy = cRect.y + cRect.height;
@@ -655,13 +612,10 @@
         return new Rectangle(0, wy, Graphics.boxWidth, wh);
     };
 
-    // 4. 物品选择窗口 (显示背包装备)
-    // [Fix] 与槽位窗口重叠，避免位置错乱
     Scene_Equip.prototype.itemWindowRect = function() {
         return this.slotWindowRect();
     };
 
-    // [Draw] 优化装备选择列表 (空物品显示“卸下”)
     Window_EquipItem.prototype.drawItem = function(index) {
         const item = this.itemAt(index);
         const rect = this.itemLineRect(index);
@@ -669,15 +623,13 @@
         if (item) {
             this.drawItemName(item, rect.x, rect.y, rect.width);
         } else {
-            // 绘制“卸下”选项
             this.contents.fontSize = 22; 
-            this.changeTextColor("#eff313ff"); // 淡黄色
+            this.changeTextColor("#eff313ff"); 
             this.drawText("卸下当前装备", rect.x, rect.y, rect.width, "center");
             this.resetFontSettings();
         }
     };
     
-    // 包含空物品逻辑
     Window_EquipItem.prototype.includes = function(item) {
         if (item === null) {
             return this._actor && this._actor.isEquipChangeOk(this._slotId);
@@ -689,7 +641,6 @@
         );
     };
 
-    // 5. 帮助/故事窗口 (底部固定)
     Scene_Equip.prototype.helpWindowRect = function() {
         const sRect = this.slotWindowRect();
         const wy = sRect.y + sRect.height; 
@@ -697,7 +648,7 @@
         return new Rectangle(0, wy, Graphics.boxWidth, wh);
     };
 
-    // --- 装备描述窗口 (Window_EquipHelp) ---
+    // --- 装备描述窗口 ---
     function Window_EquipHelp() {
         this.initialize(...arguments);
     }
@@ -711,7 +662,6 @@
         this._item = null;
         this.padding = 12;
         
-        // 强制不透明皮肤
         this.loadWindowskin(); 
         this.backOpacity = 255; 
         this.opacity = 255;     
@@ -771,7 +721,7 @@
         this.addWindow(this._helpWindow);
     };
 
-    // --- 装备状态窗口重构 (Window_EquipStatus) ---
+    // --- 装备状态窗口 ---
     const _Window_EquipStatus_initialize = Window_EquipStatus.prototype.initialize;
     Window_EquipStatus.prototype.initialize = function(rect) {
         _Window_EquipStatus_initialize.call(this, rect); 
@@ -789,7 +739,6 @@
         }
     };
 
-    // 绘制带框头像
     Window_EquipStatus.prototype.drawFaceWithFrame = function() {
         const faceSize = SQ_EQUIP_CONFIG.faceSize;
         const faceY = Math.floor((this.innerHeight - faceSize) / 2);
@@ -800,7 +749,6 @@
         this.drawActorFace(this._actor, faceX, faceY, faceSize, faceSize);
     };
 
-    // 绘制头部信息 (名字、等级、职业)
     Window_EquipStatus.prototype.drawHeaderInfo = function() {
         const startX = SQ_EQUIP_CONFIG.faceSize + 16; 
         const startY = 12;       
@@ -815,7 +763,6 @@
         const lvIconY = row2Y + 6; 
         
         const drawExtra = () => {
-            // [Fix] 防止窗口销毁后访问上下文导致崩溃
             if (!this.contents || !this.contents.context) return;
 
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, startX, lvIconY);
@@ -830,7 +777,6 @@
         if (lvIcon.width > 0) drawExtra(); else lvIcon.addLoadListener(drawExtra);
     };
 
-    // 绘制属性对比 (双列布局)
     Window_EquipStatus.prototype.drawParameters = function() {
         const startX = SQ_EQUIP_CONFIG.faceSize + 16; 
         const startY = 74; 
@@ -858,7 +804,6 @@
         this.contents.fontSize = SQ_EQUIP_CONFIG.fontSize.paramVal;
         this.drawText(curVal, x + labelW, y, 40, "right");
 
-        // 绘制变更预览 (箭头 + 新数值)
         if (this._tempActor) {
              const newVal = this._tempActor.param(paramId);
              const diff = newVal - curVal;
@@ -883,7 +828,6 @@
     // [Module 5] 状态界面重构 (Scene_Status)
     // ========================================================================
 
-    // 1. 场景布局
     Scene_Status.prototype.create = function() {
         Scene_MenuBase.prototype.create.call(this);
         this.createProfileWindow();
@@ -927,9 +871,7 @@
         this._profileWindow.setText(actor.profile()); 
     };
 
-    // ------------------------------------------------------------------------
-    // [Custom Window] Window_StatusMain (整合的状态主窗口)
-    // ------------------------------------------------------------------------
+    // [Custom Window] Window_StatusMain
     
     function Window_StatusMain() {
         this.initialize(...arguments);
@@ -967,13 +909,8 @@
         if (this._actor) {
             const padding = 12;
             
-            // 区域1: 头部 (头像+基础信息)
             this.drawHeaderSection(padding, 12);
-
-            // 区域2: 属性 (六维+高级参数)
             this.drawParametersSection(padding, 185);
-
-            // 区域3: 装备
             this.drawEquipSection(padding, 465);
         }
     };
@@ -984,21 +921,17 @@
         this.contents.fillRect(x, y + height - 1, width, 1, "rgba(0, 0, 0, 0.5)");
     };
 
-    // [Section] 头部区域
     Window_StatusMain.prototype.drawHeaderSection = function(x, y) {
         const actor = this._actor;
         const faceSize = 144;
         
-        // 头像与边框
         this.drawActorFace(actor, x + 6, y, faceSize, faceSize);
         this.contents.strokeRect(x + 6, y, faceSize, faceSize, "rgba(255, 215, 0, 0.8)");
         this.contents.strokeRect(x + 5, y - 1, faceSize + 2, faceSize + 2, "rgba(0, 0, 0, 0.5)");
 
-        // 信息区
         const infoX = x + faceSize + 24; 
         let currentY = y; 
 
-        // 姓名
         this.contents.fontSize = 28;
         this.contents.fontBold = true;
         this.changeTextColor('#FFD700'); 
@@ -1007,12 +940,10 @@
         
         currentY += 36;
 
-        // 职业与等级
         const lvIcon = ImageManager.loadPicture("lvicon");
         const drawLvY = currentY; 
         
         const drawLv = () => {
-            // [Fix] 防止野指针崩溃
             if (!this.contents || !this.contents.context) return;
 
             this.contents.blt(lvIcon, 0, 0, lvIcon.width, lvIcon.height, infoX, drawLvY + 6);
@@ -1030,7 +961,6 @@
 
         currentY += 22;
 
-        // 经验值
         this.contents.fontSize = 16;
         this.changeTextColor(ColorManager.systemColor());
         this.drawText("经验值:", infoX, currentY, 40);
@@ -1049,7 +979,6 @@
 
         currentY += 34;
 
-        // 计量槽
         const gaugeSpacing = 30;
         this.placeGauge(actor, "hp", infoX, currentY);
         currentY += gaugeSpacing;
@@ -1060,7 +989,6 @@
         }
     };
 
-    // [Section] 属性区域
     Window_StatusMain.prototype.drawParametersSection = function(x, y) {
         const actor = this._actor;
         const width = this.innerWidth - x * 2;
@@ -1068,7 +996,6 @@
         
         this.drawSectionBg(x, y, width, height);
 
-        // 标题
         this.contents.fontSize = 22;
         this.changeTextColor(ColorManager.systemColor());
         this.drawText("角色属性", x + 10, y + 10, 200);
@@ -1078,14 +1005,12 @@
         const colWidth = width / 2 - 10;
         const col2X = x + width / 2 + 10;
 
-        // 左列：六维
         for (let i = 0; i < 6; i++) {
             const paramId = 2 + i;
             const dy = startY + i * lineHeight;
             this.drawParamLine(x + 10, dy, colWidth, TextManager.param(paramId), actor.param(paramId));
         }
 
-        // 右列：高级属性
         const labelHit = TextManager.param(8) || "命中率";
         const labelEva = TextManager.param(9) || "闪避率";
 
@@ -1116,7 +1041,6 @@
         this.contents.fillRect(x, y + 30, width - 10, 1, "rgba(255,255,255,0.1)");
     };
 
-    // [Section] 装备区域
     Window_StatusMain.prototype.drawEquipSection = function(x, y) {
         const width = this.innerWidth - x * 2;
         const height = this.innerHeight - y - 10;
@@ -1156,7 +1080,6 @@
         }
     };
 
-    // 精灵管理
     Window_StatusMain.prototype.placeGauge = function(actor, type, x, y) {
         if (typeof Sprite_MenuGauge === "undefined") return;
         const key = "status-gauge-" + type;
@@ -1188,7 +1111,7 @@
     // [Module 6] 存档/商店界面适配
     // ========================================================================
 
-    // --- 存档界面 (Scene_File) ---
+    // --- 存档界面 ---
     Scene_File.prototype.helpWindowRect = function() {
         const wx = 0;
         const wy = 0; 
@@ -1205,89 +1128,25 @@
         return new Rectangle(wx, wy, ww, wh);
     };
 
-    // --- 商店界面 (Scene_Shop) ---
-    Scene_Shop.prototype.mainAreaTop = function() { return 0; };
-    Scene_Shop.prototype.mainAreaHeight = function() {
-        const helpHeight = this.calcWindowHeight(1, true); 
-        return Graphics.boxHeight - this.mainAreaTop() - helpHeight;
-    };
-    Scene_Shop.prototype.mainCommandWidth = function() { return 180; };
-    Scene_Shop.prototype.statusWidth = function() { return 180; };
-    
-    Scene_Shop.prototype.createHelpWindow = function() {
-        const helpHeight = this.calcWindowHeight(1, true);
-        const rect = new Rectangle(0, Graphics.boxHeight - helpHeight, Graphics.boxWidth, helpHeight);
-        this._helpWindow = new Window_Help(rect);
-        this.addWindow(this._helpWindow);
-    };
-
-    // [Override] 商店按钮适配
-    Window_ShopNumber.prototype.createButtons = function() {
-        this._buttons = [];
-        if (ConfigManager.touchUI) {
-            for (const type of ["down2", "down", "up", "up2", "ok"]) {
-                const button = new Sprite_Button(type);
-                this._buttons.push(button);
-                this.addInnerChild(button);
-            }
-            this._buttons[0].setClickHandler(this.onButtonDown2.bind(this));
-            this._buttons[1].setClickHandler(this.onButtonDown.bind(this));
-            this._buttons[2].setClickHandler(this.onButtonUp.bind(this));
-            this._buttons[3].setClickHandler(this.onButtonUp2.bind(this));
-            this._buttons[4].setClickHandler(this.onButtonOk.bind(this));
-        }
-    };
-    Window_ShopNumber.prototype.buttonSpacing = function() { return 6; };
-    Window_ShopNumber.prototype.placeButtons = function() {
-        const sp = this.buttonSpacing();
-        const availableWidth = this.innerWidth - 16; 
-        const originalTotalWidth = this._buttons.reduce((r, button) => r + button.width + sp, -sp);
-        let scaleFactor = 1;
-        if (originalTotalWidth > availableWidth) {
-            scaleFactor = availableWidth / originalTotalWidth; 
-            scaleFactor = Math.max(scaleFactor, 0.7); 
-        }
-        let x = (this.innerWidth - (originalTotalWidth * scaleFactor)) / 2; 
-        for (const button of this._buttons) {
-            button.x = x;
-            button.y = this.buttonY();
-            button.scale.x = button.scale.y = scaleFactor;
-            x += (button.width * scaleFactor) + sp;
-        }
-    };
-    Window_ShopNumber.prototype.buttonY = function() {
-        return Math.floor(this.totalPriceY() + this.lineHeight() * 2);
-    };
-    Window_ShopNumber.prototype.totalPriceY = function() {
-        return Math.floor(this.itemNameY() + this.lineHeight() * 2);
-    };
-    Window_ShopNumber.prototype.itemNameY = function() {
-        return Math.floor(this.innerHeight / 2 - this.lineHeight() * 1.5);
-    };
-
     // ========================================================================
     // [Module 7] 物品界面重构 (Scene_Item)
-    // 布局：分类(70) -> 列表(双列) -> 底部超大故事窗口(300)
     // ========================================================================
 
     const SQ_ITEM_CONFIG = {
-        catH: 70,       // 分类高度
-        helpH: 300,     // 故事高度
+        catH: 70,       
+        helpH: 300,     
     };
 
-    // 1. 分类窗口
     Scene_Item.prototype.categoryWindowRect = function() {
         return new Rectangle(0, 0, Graphics.boxWidth, SQ_ITEM_CONFIG.catH);
     };
 
-    // 2. 物品列表
     Scene_Item.prototype.itemWindowRect = function() {
         const wy = SQ_ITEM_CONFIG.catH; 
         const wh = Graphics.boxHeight - SQ_ITEM_CONFIG.catH - SQ_ITEM_CONFIG.helpH; 
         return new Rectangle(0, wy, Graphics.boxWidth, wh);
     };
 
-    // [Override] 物品列表双列显示
     Window_ItemList.prototype.maxCols = function() {
         return 2; 
     };
@@ -1296,8 +1155,6 @@
         return 12;
     };
 
-    // 4. 自定义物品描述窗口 (Window_ItemUserHelp)
-    // 特点：强制 18 号字，防止被系统重置
     function Window_ItemUserHelp() {
         this.initialize(...arguments);
     }
@@ -1319,7 +1176,6 @@
         this.windowskin = ImageManager.loadSystem("Battlewindow");
     };
 
-    // [Fix] 核心修复：锁死字号，避免 drawTextEx 重置
     Window_ItemUserHelp.prototype.resetFontSettings = function() {
         this.contents.fontFace = $gameSystem.mainFontFace();
         this.contents.fontSize = Window_ItemUserHelp.storyContentSize; 
@@ -1354,7 +1210,7 @@
         this.resetFontSettings();
 
         if (isStory) {
-            this.changeTextColor("#e6c510"); // 故事文本高亮
+            this.changeTextColor("#e6c510"); 
         } else {
             this.resetTextColor(); 
         }
@@ -1362,7 +1218,6 @@
         this.drawTextEx(text, 4, 4, this.contents.width - 8);
     };
 
-    // 注册帮助窗口
     Scene_Item.prototype.createHelpWindow = function() {
         const wy = Graphics.boxHeight - SQ_ITEM_CONFIG.helpH;
         const rect = new Rectangle(0, wy, Graphics.boxWidth, SQ_ITEM_CONFIG.helpH);
@@ -1370,7 +1225,6 @@
         this.addWindow(this._helpWindow);
     };
 
-    // 关联更新
     const _Window_ItemList_updateHelp = Window_ItemList.prototype.updateHelp;
     Window_ItemList.prototype.updateHelp = function() {
         if (SceneManager._scene instanceof Scene_Item && this._helpWindow) {
@@ -1381,10 +1235,9 @@
     };
 
     // ========================================================================
-    // [Module 8] 存档界面卡片化 (Window_SavefileList 重写)
+    // [Module 8] 存档界面卡片化
     // ========================================================================
 
-    // [Core Extension] 扩展存档信息：写入地图名、金币、等级
     const _DataManager_makeSavefileInfo = DataManager.makeSavefileInfo;
     DataManager.makeSavefileInfo = function() {
         const info = _DataManager_makeSavefileInfo.call(this);
@@ -1408,13 +1261,14 @@
         return SQ_SAVE_CONFIG.itemHeight;
     };
 
-    // [Draw] 绘制存档卡片
     Window_SavefileList.prototype.drawItem = function(index) {
+        // 主动触发背景绘制以显示渐变光标
+        this.drawItemBackground(index);
+
         const savefileId = this.indexToSavefileId(index);
         const info = DataManager.savefileInfo(savefileId);
         const rect = this.itemRectWithPadding(index);
 
-        // 绘制渐变背景
         this.drawSaveCardBg(rect);
 
         if (!info) {
@@ -1422,15 +1276,12 @@
             return;
         }
 
-        // 1. 头像绘制 (使用 blt 缩放)
         this.drawScaledFace(info, rect);
 
-        // 2. 信息布局
         const contentX = rect.x + SQ_SAVE_CONFIG.faceSize + 16;
         const contentW = rect.width - contentX - 10;
         let curY = rect.y + 6;
 
-        // 3. 第一行：ID + 地图名
         this.resetFontSettings();
         
         const idLabel = savefileId === 0 ? "【自动存档】" : `【存档 ${savefileId}】`;
@@ -1446,7 +1297,6 @@
 
         curY += 36;
 
-        // 4. 第二行：等级 + 金币
         this.contents.fontSize = SQ_SAVE_CONFIG.fontSize.info;
         this.resetTextColor();
         
@@ -1459,7 +1309,6 @@
         
         curY += 28;
 
-        // 5. 第三行：时间 + 日期
         this.resetTextColor();
         this.drawText(`时间: ${info.playtime}`, contentX, curY, 200);
         
@@ -1472,7 +1321,6 @@
         }
     };
 
-    // 辅助：绘制卡片背景
     Window_SavefileList.prototype.drawSaveCardBg = function(rect) {
         const ctx = this.contents.context;
         const grd = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.width, rect.y);
@@ -1484,7 +1332,6 @@
         this.contents.fillRect(rect.x, rect.y + rect.height - 1, rect.width, 1, "rgba(255, 255, 255, 0.2)");
     };
 
-    // 辅助：头像缩放绘制
     Window_SavefileList.prototype.drawScaledFace = function(info, rect) {
         if (!info.faces || info.faces.length === 0) return;
         
@@ -1512,7 +1359,6 @@
         }
     };
 
-    // 辅助：绘制空白档位
     Window_SavefileList.prototype.drawEmptySlot = function(id, rect) {
         const idLabel = id === 0 ? "自动存档" : `存档 ${id}`;
         
@@ -1529,7 +1375,6 @@
 
     // ========================================================================
     // [Module 9] 样式补丁 (Style Patch)
-    // 强制所有相关窗口使用 Battlewindow 皮肤且完全不透明，模拟 J2ME 观感
     // ========================================================================
     const targetWindowClasses = [
         Window_Help, Window_Gold, Window_MenuCommand, Window_MenuStatus,
@@ -1538,7 +1383,6 @@
         Window_EquipCommand, Window_EquipSlot, Window_EquipItem, Window_EquipStatus,
         Window_Status, Window_StatusParams, Window_StatusEquip,
         Window_Options, Window_SavefileList, Window_GameEnd,
-        Window_ShopCommand, Window_ShopBuy, Window_ShopSell, Window_ShopNumber, Window_ShopStatus
     ];
 
     for (const WinClass of targetWindowClasses) {
@@ -1557,11 +1401,142 @@
             if (this._dimmerSprite) this._dimmerSprite.visible = false;
         };
     }
+    // ========================================================================
+    // [Module 10] 视觉核心美化 v3.1 (Visual Polish - Soft Champagne Gold)
+    // ------------------------------------------------------------------------
+    // 1. 降低饱和度：将“亮黄色”改为“柔和香槟金/古铜金”。
+    // 2. 降低亮度：减弱外发光和边框透明度，视觉更护眼。
+    // ========================================================================
 
-    Window_ShopNumber.prototype.setBackgroundType = function(type) {
-        Window_Selectable.prototype.setBackgroundType.call(this, 0);
-        this.opacity = 255;
-        this.backOpacity = 255;
+    // 1. 重写选中项背景绘制 (暗色基调 + 极淡的金色底纹)
+    Window_Selectable.prototype.drawBackgroundRect = function(rect) {
+        // 起始色：保持深褐色，增加一点透明度让画面更通透
+        const c1 = "rgba(30, 15, 5, 0.5)"; 
+        // 结束色：完全透明
+        const c2 = "rgba(30, 15, 5, 0.0)";  
+        
+        const x = rect.x;
+        const y = rect.y;
+        const w = rect.width;
+        const h = rect.height;
+
+        // 绘制背景渐变
+        this.contentsBack.gradientFillRect(x, y, w, h, c1, c2, false);
+        
+        // 底部装饰线：改为极淡的香槟金，不再刺眼 (透明度 0.3 -> 0.15)
+        this.contentsBack.fillRect(x, y + h - 1, w, 1, "rgba(218, 194, 112, 0.15)");
     };
 
+    // 2. 修正主菜单脸图边框 (更细、更淡)
+    if (Window_MenuStatus) {
+        Window_MenuStatus.prototype.drawSlotCardBg = function(index) {
+            const p = this._tempParams;
+            if (!p) return;
+            const x = p.faceX;
+            const y = p.faceY;
+            const s = p.faceSize;
+
+            // 仅绘制边框：改为柔和的古铜色，透明度大幅降低 (0.5 -> 0.25)
+            // 这样既有界限感，又不会抢了头像的戏
+            this.contents.strokeRect(x, y, s, s, "rgba(218, 194, 112, 0.25)"); 
+        };
+    }
+    
+    // 3. 装备界面脸图绘制 (背景置底，边框柔化)
+    if (Window_EquipStatus) {
+        Window_EquipStatus.prototype.drawFaceWithFrame = function() {
+            const faceSize = (typeof SQ_EQUIP_CONFIG !== 'undefined') ? SQ_EQUIP_CONFIG.faceSize : 144;
+            const faceY = Math.floor((this.innerHeight - faceSize) / 2);
+            const faceX = 6; 
+            
+            // 背景底色：深色半透明
+            this.contents.fillRect(faceX, faceY, faceSize, faceSize, "rgba(0, 0, 0, 0.4)");
+            
+            // 绘制脸图
+            this.drawActorFace(this._actor, faceX, faceY, faceSize, faceSize);
+            
+            // 边框：柔和香槟金 (0.3 透明度)
+            this.contents.strokeRect(faceX, faceY, faceSize, faceSize, "rgba(218, 194, 112, 0.3)"); 
+        };
+    }
+
+    // 4. 重写光标刷新逻辑 (核心：去油腻，改用哑光金)
+    Window.prototype._refreshCursor = function() {
+        const pad = this._padding;
+        const x = this._cursorRect.x + pad - this.origin.x;
+        const y = this._cursorRect.y + pad - this.origin.y;
+        const w = this._cursorRect.width;
+        const h = this._cursorRect.height;
+        const x2 = Math.max(x, pad);
+        const y2 = Math.max(y, pad);
+        const ox = x - x2;
+        const oy = y - y2;
+        const w2 = Math.min(w, this._width - pad * 2);
+        const h2 = Math.min(h, this._height - pad * 2);
+
+        const bitmap = new Bitmap(w2, h2);
+        this._cursorSprite.bitmap = bitmap;
+        this._cursorSprite.setFrame(0, 0, w2, h2);
+        this._cursorSprite.move(x2, y2);
+
+        if (w > 0 && h > 0) {
+            const ctx = bitmap.context;
+            
+            // 1. 填充：几乎不可见的暖色光晕 (0.05 -> 0.03)
+            ctx.fillStyle = "rgba(255, 230, 150, 0.03)";
+            ctx.fillRect(ox, oy, w2, h2);
+
+            // 2. 外发光：大幅减弱，颜色改为柔和的金褐色，不再是刺眼的橙色
+            ctx.shadowBlur = 4; // 模糊半径减半 (8 -> 4)
+            ctx.shadowColor = "rgba(184, 134, 11, 0.4)"; // 暗金
+            
+            // 3. 主边框：香槟金 (#DAC272)，哑光质感
+            ctx.strokeStyle = "#DAC272"; 
+            ctx.lineWidth = 1.5; // 线条变细一点点 (2 -> 1.5)
+            
+            // 绘制矩形边框
+            ctx.strokeRect(ox + 1, oy + 1, w2 - 2, h2 - 2);
+            
+            // 4. 四角装饰：改为半透明白，不再是死白
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+            const cornerLen = 5;
+            ctx.beginPath();
+            // 左上
+            ctx.moveTo(ox + 1, oy + cornerLen); ctx.lineTo(ox + 1, oy + 1); ctx.lineTo(ox + cornerLen, oy + 1);
+            // 右上
+            ctx.moveTo(w2 - cornerLen, oy + 1); ctx.lineTo(w2 - 1, oy + 1); ctx.lineTo(w2 - 1, oy + cornerLen);
+            // 右下
+            ctx.moveTo(w2 - 1, h2 - cornerLen); ctx.lineTo(w2 - 1, h2 - 1); ctx.lineTo(w2 - cornerLen, h2 - 1);
+            // 左下
+            ctx.moveTo(ox + cornerLen, h2 - 1); ctx.lineTo(ox + 1, h2 - 1); ctx.lineTo(ox + 1, h2 - cornerLen);
+            ctx.stroke();
+        }
+        
+        for (const child of this._cursorSprite.children) {
+            child.visible = false;
+        }
+    };
+
+    // 5. 呼吸动画 (更慢、更浅)
+    Window.prototype._makeCursorAlpha = function() {
+        const baseAlpha = this.contentsOpacity / 255;
+        if (this.active) {
+            // 速度减慢: 0.12 -> 0.08
+            // 亮度区间: 0.6 ~ 0.9 (不再闪烁到全亮，保持克制)
+            const pulse = (Math.sin(this._animationCount * 0.08) + 1) / 2; 
+            return baseAlpha * (0.6 + pulse * 0.3);
+        }
+        return baseAlpha;
+    };
+
+    // 6. 修正 ContentsBack 清理
+    const _Window_Selectable_refresh = Window_Selectable.prototype.refresh;
+    Window_Selectable.prototype.refresh = function() {
+        if (this.contentsBack) {
+            this.contentsBack.clear();
+        }
+        _Window_Selectable_refresh.call(this);
+    };
+    
 })();
