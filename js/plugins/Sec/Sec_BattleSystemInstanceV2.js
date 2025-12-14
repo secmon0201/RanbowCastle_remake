@@ -251,11 +251,13 @@
     };
 
     // ======================================================================
-    // 2. 技能效果综合挂钩 (Snapshot / Summon / Custom)
+    // 2. 技能效果综合挂钩 (Refactored v2.2)
     // ======================================================================
-    const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
-    Game_Action.prototype.applyItemUserEffect = function(target) {
-        _Game_Action_applyItemUserEffect.call(this, target);
+    
+    // 2.1 全局生效模块 (Summon & Snapshot) - 无论打多少人，只执行一次
+    const _Game_Action_applyGlobal = Game_Action.prototype.applyGlobal;
+    Game_Action.prototype.applyGlobal = function() {
+        _Game_Action_applyGlobal.call(this);
         
         const item = this.item();
         if (!item) return;
@@ -263,45 +265,40 @@
         const subject = this.subject();
         const note = item.note;
 
-        // --- 2.1 召唤模块 ---
-        const uniqueMatches = note.matchAll(/<SummonUnique[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
-        for (const match of uniqueMatches) {
-            $gameTroop.requestSummonEnqueue(parseInt(match[1]), true, subject, match[2]?parseInt(match[2]):0);
-        }
-        const forceMatches = note.matchAll(/<SummonForce[:：]\s*(\d+)(?:[,，]\s*(\d+))?\s*>/g);
-        for (const match of forceMatches) {
-            $gameTroop.requestSummonEnqueue(parseInt(match[1]), false, subject, match[2]?parseInt(match[2]):0);
-        }
-
-        // --- 2.2 快照模块 (Snapshot) ---
+        // --- 快照模块 (Snapshot) ---
+        // (移到此处防止AOE技能导致多次回血/多次记录)
         const snapshotMatches = note.matchAll(/<Snapshot[:：]\s*(Record|Restore)\s*[,，]\s*(\w+)\s*>/gi);
         for (const match of snapshotMatches) {
             const mode = match[1].toLowerCase();
             const key = match[2];
             
+            // 记录逻辑 (绑定在 subject 身上)
             if (mode === 'record') {
-                target._secSnapshots = target._secSnapshots || {};
-                target._secSnapshots[key] = {
-                    hp: target.hp,
-                    mp: target.mp,
-                    tp: target.tp
+                subject._secSnapshots = subject._secSnapshots || {};
+                subject._secSnapshots[key] = {
+                    hp: subject.hp,
+                    mp: subject.mp,
+                    tp: subject.tp
                 };
-                if (target.startCustomPopupConfig) {
-                    target.startCustomPopupConfig({ 
+                if (subject.startCustomPopupConfig) {
+                    subject.startCustomPopupConfig({ 
                         text: V2_Params.snapshot.recText, 
                         color: V2_Params.snapshot.recColor, 
                         style: V2_Params.snapshot.recStyle, 
                         wait: V2_Params.snapshot.recWait 
                     });
                 }
-            } else if (mode === 'restore') {
-                if (target._secSnapshots && target._secSnapshots[key]) {
-                    const data = target._secSnapshots[key];
-                    if (target.hp < data.hp) {
-                        target.setHp(data.hp);
-                        target.setMp(data.mp);
-                        if (target.startCustomPopupConfig) {
-                            target.startCustomPopupConfig({ 
+            } 
+            // 恢复逻辑
+            else if (mode === 'restore') {
+                if (subject._secSnapshots && subject._secSnapshots[key]) {
+                    const data = subject._secSnapshots[key];
+                    // 仅当当前血量更低时回溯
+                    if (subject.hp < data.hp) {
+                        subject.setHp(data.hp);
+                        subject.setMp(data.mp);
+                        if (subject.startCustomPopupConfig) {
+                            subject.startCustomPopupConfig({ 
                                 text: V2_Params.snapshot.resText, 
                                 color: V2_Params.snapshot.resColor, 
                                 style: V2_Params.snapshot.resStyle, 
@@ -309,16 +306,25 @@
                             });
                         }
                         if (V2_Params.snapshot.resAnim > 0) {
-                            $gameTemp.requestAnimation([target], V2_Params.snapshot.resAnim);
+                            $gameTemp.requestAnimation([subject], V2_Params.snapshot.resAnim);
                         }
                     }
                 }
             }
         }
+    };
+
+    // 2.2 针对目标生效模块 (Custom Effect)
+    const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
+    Game_Action.prototype.applyItemUserEffect = function(target) {
+        _Game_Action_applyItemUserEffect.call(this, target);
         
-        // --- 2.3 自定义脚本 (Custom Effect) ---
-        // [Fix] 使用 [\s\S]+? 来匹配多行脚本内容，避免单行匹配失败
-        const scriptMatches = note.matchAll(/<CustomEffect[:：]\s*([\s\S]+?)\s*>/gi);
+        const item = this.item();
+        if (!item) return;
+        const subject = this.subject();
+
+        // [Fix] 只保留 CustomEffect，召唤逻辑已移至 applyGlobal
+        const scriptMatches = item.note.matchAll(/<CustomEffect[:：]\s*([\s\S]+?)\s*>/gi);
         for (const match of scriptMatches) {
             try {
                 const a = subject;

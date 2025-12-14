@@ -1,28 +1,54 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 自适应状态栏 & 独立图标图层 & 自定义窗口布局 (SuperFV 完美显示修复版)
- * @author Secmon (Modified for SuperFrontViewMZ)
- * @version 2.6 (Full Face Fix)
+ * @plugindesc [战斗] 自适应状态栏 & 缓冲条 & 渐变计量槽 (v2.8 Spacing)
+ * @author Secmon & Gemini
+ * @base Sec_BattleSystemInstance
+ * @orderAfter Sec_BattleSystemInstance
+ * @orderAfter Sq_BattleComplete
+ * @orderBefore Sec_BattleVisuals
+ *
+ * @help
+ * ============================================================================
+ * Sec_CustomDrawBattleStatus.js (v2.8)
+ * ============================================================================
+ * 【v2.8 更新】
+ * 新增 [计量槽-名字间距] 参数，解决布局拥挤问题。
+ *
+ * ============================================================================
+ * * @param ---Layout---
+ * @text [布局设置]
+ * @default
  *
  * @param NameFontSize
  * @text 名字字体大小
+ * @parent ---Layout---
  * @type number
- * @default 26
+ * @default 20
  *
  * @param NamePadding
  * @text 名字内边距
+ * @parent ---Layout---
  * @desc 名字距离脸图左边缘的水平内边距
  * @type number
  * @default 6
  *
  * @param NameExtraOffsetY
  * @text 名字额外下偏移
- * @desc 在左下角基础上额外向下偏移的像素
+ * @parent ---Layout---
+ * @desc 名字相对于【头像区域底部】的向下偏移量。
  * @type number
- * @default 11
+ * @default 40
+ *
+ * @param GaugeOffsetY
+ * @text 计量槽-名字间距
+ * @parent ---Layout---
+ * @desc [新增] 调整计量槽与名字之间的垂直空白距离（正数向下远离名字）。
+ * @type number
+ * @default 4
  *
  * @param FaceScale
  * @text 头像缩放比例
+ * @parent ---Layout---
  * @desc 调整头像的大小（0.8表示80%，1.0表示原大小）
  * @type number
  * @decimals 2
@@ -30,47 +56,87 @@
  *
  * @param FaceOffsetY
  * @text 头像Y轴微调
+ * @parent ---Layout---
  * @desc 调整头像的垂直位置（正数向下，负数向上）
- * @type number
- * @default 0
- *
- * @param ShowTpGauge
- * @text 是否显示TP条
- * @desc true显示，false隐藏
- * @type boolean
- * @default true
- *
- * @param GaugeHeight
- * @text 进度条高度
- * @type number
- * @default 8
- *
- * @param GaugePadding
- * @text 进度条内边距
  * @type number
  * @default 1
  *
+ * @param ---Gauges---
+ * @text [计量槽设置]
+ * @default
+ * * @param ShowTpGauge
+ * @text 是否显示TP条
+ * @parent ---Gauges---
+ * @desc true显示，false隐藏
+ * @type boolean
+ * @default false
+ *
+ * @param GaugeHeight
+ * @text 进度条高度
+ * @parent ---Gauges---
+ * @type number
+ * @default 12
+ *
+ * @param GaugePadding
+ * @text 进度条内边距
+ * @parent ---Gauges---
+ * @type number
+ * @default 1
+ *
+ * @param GaugeSpacing
+ * @text 进度条间距
+ * @parent ---Gauges---
+ * @type number
+ * @default 4
+ *
  * @param ValueAreaWidth
  * @text 数值区域宽度
+ * @parent ---Gauges---
  * @type number
  * @default 90
  *
+ * @param ---Colors---
+ * @text [颜色设置]
+ * @default
+ *
  * @param HpGaugeColor
- * @text HP进度条颜色
+ * @text HP渐变起始色
+ * @parent ---Colors---
  * @type string
- * @default #fffdb0
+ * @default #ff6b6b
+ *
+ * @param HpGaugeColor2
+ * @text HP渐变结束色
+ * @parent ---Colors---
+ * @type string
+ * @default #ff9f43
  *
  * @param MpGaugeColor
- * @text MP进度条颜色
+ * @text MP渐变起始色
+ * @parent ---Colors---
  * @type string
- * @default #61c3d0
+ * @default #4d96ff
+ *
+ * @param MpGaugeColor2
+ * @text MP渐变结束色
+ * @parent ---Colors---
+ * @type string
+ * @default #54a0ff
  *
  * @param TpGaugeColor
- * @text TP进度条颜色
+ * @text TP渐变起始色
+ * @parent ---Colors---
  * @type string
- * @default #55DD55
+ * @default #6bc547
+ *
+ * @param TpGaugeColor2
+ * @text TP渐变结束色
+ * @parent ---Colors---
+ * @type string
+ * @default #95d5b2
  *
  * @param ---State Icons---
+ * @text [状态图标]
  * @default
  *
  * @param StateIconSize
@@ -108,6 +174,7 @@
  * @default 0
  *
  * @param ---Window Customization---
+ * @text [窗口覆盖]
  * @default
  *
  * @param EnableCustomWindow
@@ -115,7 +182,7 @@
  * @parent ---Window Customization---
  * @desc 是否启用下方的窗口位置和大小设置？
  * @type boolean
- * @default false
+ * @default true
  *
  * @param WindowX
  * @text 窗口 X 坐标
@@ -131,21 +198,21 @@
  * @desc 窗口左上角的 Y 坐标 (支持负数)
  * @type number
  * @min -9999
- * @default 450
+ * @default 0
  *
  * @param WindowWidth
  * @text 窗口宽度
  * @parent ---Window Customization---
  * @desc 窗口宽度 (设为 0 则保持默认宽度)
  * @type number
- * @default 0
+ * @default 355
  *
  * @param WindowHeight
  * @text 窗口高度
  * @parent ---Window Customization---
  * @desc 窗口高度 (设为 0 则保持默认高度)
  * @type number
- * @default 0
+ * @default 145
  *
  * @param ---Buffer Visuals---
  * @text [缓冲条颜色]
@@ -160,55 +227,58 @@
  * @parent ---Buffer Visuals---
  * @desc 回血/蓝时预显示的底色(支持Hex或rgba)
  * @default #FFD700
- *
- * @help
- * ============================================================================
- * Sec_CustomDrawBattleStatus.js (v2.6)
- * ============================================================================
- * 更新日志 v2.6:
- * 彻底修复了 SuperFrontViewMZ 脸图显示不全（左右被裁切）的问题。
- * * 原理：
- * 此时插件会注入一段特殊的代码，强制让 SuperFV 使用完整的脸图尺寸(144x144)，
- * 而不再受限于系统默认的窗口格子宽度。
- * * 同时保留了受击震动效果（Shake）。
- * ============================================================================
  */
 
 (() => {
-    const parameters = PluginManager.parameters('Sec_CustomDrawBattleStatus');
+    // 自动获取文件名参数
+    const scriptUrl = document.currentScript.src;
+    const pluginName = scriptUrl.match(/([^\/]+)\.js$/)[1];
+    const parameters = PluginManager.parameters(pluginName);
     
-    const nameFontSize = Number(parameters['NameFontSize'] || 26);
+    // --- Layout ---
+    const nameFontSize = Number(parameters['NameFontSize'] || 20);
     const namePadding = Number(parameters['NamePadding'] || 6);
-    const nameExtraOffsetY = Number(parameters['NameExtraOffsetY'] || 11);
-    const gaugeHeight = Number(parameters['GaugeHeight'] || 8);
-    const gaugePadding = Number(parameters['GaugePadding'] || 1);
-    const valueAreaWidth = Number(parameters['ValueAreaWidth'] || 90);
+    const nameExtraOffsetY = Number(parameters['NameExtraOffsetY'] || 40);
+    // [新增] 间距参数
+    const gaugeOffsetY = Number(parameters['GaugeOffsetY'] || 4);
     
     const FACE_SCALE = Number(parameters['FaceScale'] || 1.00);
-    const FACE_OFFSET_Y = Number(parameters['FaceOffsetY'] || 0);
-    const SHOW_TP_GAUGE = parameters['ShowTpGauge'] === "true"; 
+    const FACE_OFFSET_Y = Number(parameters['FaceOffsetY'] || 1);
+    
+    // --- Gauges ---
+    const SHOW_TP_GAUGE = (parameters['ShowTpGauge'] === "true"); 
+    const gaugeHeight = Number(parameters['GaugeHeight'] || 12);
+    const gaugePadding = Number(parameters['GaugePadding'] || 1);
+    const gaugeSpacing = Number(parameters['GaugeSpacing'] || 4);
+    const valueAreaWidth = Number(parameters['ValueAreaWidth'] || 90);
 
-    const HP_GAUGE_COLOR = parameters['HpGaugeColor'] || "#fffdb0";
-    const MP_GAUGE_COLOR = parameters['MpGaugeColor'] || "#61c3d0";
-    const TP_GAUGE_COLOR = parameters['TpGaugeColor'] || "#55DD55";
-
-    const ICON_SIZE = 10;
-    const ROW_SPACING = 10;
-
-    const STATE_ICON_SIZE = Number(parameters['StateIconSize'] || 24);
-    const STATE_MAX_COUNT = Number(parameters['StateMaxCount'] || 4);
-    const STATE_SPACING = Number(parameters['StateSpacing'] || 5);
-    const STATE_ICON_OFFSET_X = Number(parameters['StateIconOffsetX'] || 0);
-    const STATE_ICON_OFFSET_Y = Number(parameters['StateIconOffsetY'] || 0);
-
-    const ENABLE_CUSTOM_WINDOW = parameters['EnableCustomWindow'] === "true";
-    const CUSTOM_WIN_X = Number(parameters['WindowX'] || 0);
-    const CUSTOM_WIN_Y = Number(parameters['WindowY'] || 0);
-    const CUSTOM_WIN_W = Number(parameters['WindowWidth'] || 0);
-    const CUSTOM_WIN_H = Number(parameters['WindowHeight'] || 0);
+    // --- Colors ---
+    const HP_C1 = parameters['HpGaugeColor'] || "#ff6b6b";
+    const HP_C2 = parameters['HpGaugeColor2'] || "#ff9f43";
+    
+    const MP_C1 = parameters['MpGaugeColor'] || "#4d96ff";
+    const MP_C2 = parameters['MpGaugeColor2'] || "#54a0ff";
+    
+    const TP_C1 = parameters['TpGaugeColor'] || "#6bc547";
+    const TP_C2 = parameters['TpGaugeColor2'] || "#95d5b2";
 
     const BUFFER_COLOR_DAMAGE = parameters['BufferColorDamage'] || "#FFFFFF";
     const BUFFER_COLOR_HEAL = parameters['BufferColorHeal'] || "#FFD700";
+
+    // --- Icons ---
+    const ICON_SIZE = 10;
+    const STATE_ICON_SIZE = Number(parameters['StateIconSize'] || 24);
+    const STATE_MAX_COUNT = Number(parameters['StateMaxCount'] || 4);
+    const STATE_SPACING = Number(parameters['StateSpacing'] || 2);
+    const STATE_ICON_OFFSET_X = Number(parameters['StateIconOffsetX'] || 0);
+    const STATE_ICON_OFFSET_Y = Number(parameters['StateIconOffsetY'] || 0);
+
+    // --- Window ---
+    const ENABLE_CUSTOM_WINDOW = (parameters['EnableCustomWindow'] === "true");
+    const CUSTOM_WIN_X = Number(parameters['WindowX'] || 0);
+    const CUSTOM_WIN_Y = Number(parameters['WindowY'] || 0);
+    const CUSTOM_WIN_W = Number(parameters['WindowWidth'] || 355);
+    const CUSTOM_WIN_H = Number(parameters['WindowHeight'] || 145);
 
     const hpIconBitmap = ImageManager.loadBitmap("img/rainbow/", "hpicon");
     const mpIconBitmap = ImageManager.loadBitmap("img/rainbow/", "mpicon");
@@ -272,6 +342,15 @@
             if (CUSTOM_WIN_H > 0) rect.height = CUSTOM_WIN_H;
         }
         return rect;
+    };
+
+    const _Scene_Battle_update = Scene_Battle.prototype.update;
+    Scene_Battle.prototype.update = function() {
+        _Scene_Battle_update.call(this);
+        if (ENABLE_CUSTOM_WINDOW && this._statusWindow) {
+            if (this._statusWindow.x !== CUSTOM_WIN_X) this._statusWindow.x = CUSTOM_WIN_X;
+            if (this._statusWindow.y !== CUSTOM_WIN_Y) this._statusWindow.y = CUSTOM_WIN_Y;
+        }
     };
 
     // ========================================================================
@@ -360,37 +439,24 @@
         const valueFontSize = Math.max(15, Math.floor(ICON_SIZE * 1.2));
         const valueHeight = valueFontSize + 4;
 
-        // --- SuperFrontViewMZ 兼容性 & 裁切修复 ---
+        // SuperFV 兼容
         let isSuperFVActive = false;
         if (this._additionalSprites && this._additionalSprites["sv_actor%1".format(index)]) {
             const sprite = this._additionalSprites["sv_actor%1".format(index)];
 
-            // 【关键修复代码 Start】
-            // 我们重写这个精灵的 updateFrame 方法。
-            // 目的：强制它使用完整的脸图尺寸 (ImageManager.faceWidth)，而不是去读取窗口的格子宽度。
-            // 这样就解决了“左右显示不全”的问题。
             sprite.updateFrame = function() {
-                // 1. 调用父类方法，确保基础逻辑（如Bitmap加载）正常运行
                 Sprite_Battler.prototype.updateFrame.call(this);
-                
                 const bitmap = this._mainSprite.bitmap;
                 if (bitmap) {
-                    // 获取标准脸图尺寸 (通常是 144x144)
                     const pw = ImageManager.faceWidth;
                     const ph = ImageManager.faceHeight;
                     const faceIndex = this._actor.faceIndex();
-                    
-                    // 计算该脸图在合集中的坐标
                     const sx = Math.floor((faceIndex % 4) * pw);
                     const sy = Math.floor(Math.floor(faceIndex / 4) * ph);
-                    
-                    // 强制设置 Frame 为完整大小，忽略 Window 的限制
                     this._mainSprite.setFrame(sx, sy, pw, ph);
-                    // 本身的 frame 也设为满大小
                     this.setFrame(0, 0, pw, ph);
                 }
             };
-            // 【关键修复代码 End】
 
             const targetHomeX = finalX + faceSize / 2;
             const targetHomeY = finalY + faceSize;
@@ -409,7 +475,6 @@
             sprite.show();
             isSuperFVActive = true;
         }
-        // ------------------------------------
 
         if (!isSuperFVActive) {
             this.drawActorFace(actor, finalX, finalY, faceSize, faceSize);
@@ -417,13 +482,14 @@
 
         this.updateActorStateSprite(index, actor, finalX, finalY, faceSize);
 
+        const nameY = finalY + faceSize + nameExtraOffsetY - this.lineHeight(); 
         const nameX = x + namePadding;
-        const nameY = finalY + faceSize - this.lineHeight() - namePadding + nameExtraOffsetY;
 
         const originalFontSize = this.contents.fontSize;
         this.contents.fontSize = nameFontSize;
         const nameColor = actor.isDead() ? "#AAAAAA" : "#FFFFFF";
 
+        // 名字描边
         const offsets = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
         offsets.forEach(([dx, dy]) => {
             this.drawText(actor.name(), nameX + dx, nameY + dy, width, "left");
@@ -432,21 +498,20 @@
         this.drawText(actor.name(), nameX, nameY, width, "left");
         this.contents.fontSize = originalFontSize;
 
-        const faceBottom = finalY + faceSize;
-        const nameBottom = nameY + this.lineHeight();
-        let contentBottomY = Math.max(faceBottom, nameBottom) + 4;
-
-        this.drawCustomGauges(actor, x, contentBottomY, width, valueFontSize, valueHeight);
+        // [New] 计量槽起始Y = 名字底部 + 间距参数
+        const gaugesStartY = nameY + this.lineHeight() + gaugeOffsetY; 
+        
+        this.drawCustomGauges(actor, x, gaugesStartY, width, valueFontSize, valueHeight);
     };
 
     Window_BattleStatus.prototype.drawCustomGauges = function(actor, x, startY, width, valueFontSize, valueHeight) {
         let contentBottomY = startY;
 
-        const drawStatusRow = (iconBitmap, valueText, rateReal, rateBuffer, gaugeColor, useBuffer) => {
+        const drawStatusRow = (iconBitmap, valueText, rateReal, rateBuffer, c1, c2, useBuffer) => {
             if (useBuffer) {
-                this.drawBufferedGauge(x, contentBottomY, width, rateReal, rateBuffer, gaugeColor);
+                this.drawBufferedGauge(x, contentBottomY, width, rateReal, rateBuffer, c1, c2);
             } else {
-                this.drawColoredGauge(x, contentBottomY, width, rateReal, gaugeColor);
+                this.drawColoredGauge(x, contentBottomY, width, rateReal, c1, c2);
             }
 
             const iconY = contentBottomY - ICON_SIZE;
@@ -459,30 +524,35 @@
             this.contents.textColor = "#FFFFFF";
             this.drawText(valueText, valueX, valueY, valueAreaWidth, "right");
             this.contents.fontSize = origFS;
-            contentBottomY += gaugeHeight + ROW_SPACING;
+            contentBottomY += gaugeHeight + gaugeSpacing;
         };
 
-        drawStatusRow(hpIconBitmap, `${actor.hp}/${actor.mhp}`, actor.hpRate(), actor.hpBufferRate(), HP_GAUGE_COLOR, true);
-        drawStatusRow(mpIconBitmap, `${actor.mp}/${actor.mmp}`, actor.mpRate(), actor.mpBufferRate(), MP_GAUGE_COLOR, true);
+        // HP
+        drawStatusRow(hpIconBitmap, `${actor.hp}/${actor.mhp}`, actor.hpRate(), actor.hpBufferRate(), HP_C1, HP_C2, true);
+        // MP
+        drawStatusRow(mpIconBitmap, `${actor.mp}/${actor.mmp}`, actor.mpRate(), actor.mpBufferRate(), MP_C1, MP_C2, true);
         
+        // TP
         if (SHOW_TP_GAUGE) {
-            drawStatusRow(tpIconBitmap, `${actor.tp}/${actor.maxTp()}`, actor.tpRate(), 0, TP_GAUGE_COLOR, false);
+            drawStatusRow(tpIconBitmap, `${actor.tp}/${actor.maxTp()}`, actor.tpRate(), 0, TP_C1, TP_C2, false);
         }
     };
 
-    Window_BattleStatus.prototype.drawColoredGauge = function(x, y, width, rate, color) {
+    // 渐变+普通条
+    Window_BattleStatus.prototype.drawColoredGauge = function(x, y, width, rate, c1, c2) {
         const height = gaugeHeight;
         const padding = gaugePadding;
         const innerWidth = Math.floor((width - padding * 2) * rate);
         const innerHeight = height - padding * 2;
 
-        this.contents.fillRect(x + padding, y + padding, width - padding * 2, innerHeight, ColorManager.gaugeBackColor());
+        this.contents.fillRect(x + padding, y + padding, width - padding * 2, innerHeight, "#202020");
         if (innerWidth > 0) {
-            this.contents.fillRect(x + padding, y + padding, innerWidth, innerHeight, color);
+            this.contents.gradientFillRect(x + padding, y + padding, innerWidth, innerHeight, c1, c2);
         }
     };
 
-    Window_BattleStatus.prototype.drawBufferedGauge = function(x, y, width, rateReal, rateBuffer, color) {
+    // 渐变+缓冲条
+    Window_BattleStatus.prototype.drawBufferedGauge = function(x, y, width, rateReal, rateBuffer, c1, c2) {
         const height = gaugeHeight;
         const padding = gaugePadding;
         const fillMaxW = width - padding * 2;
@@ -490,17 +560,17 @@
         const fillX = x + padding;
         const fillY = y + padding;
 
-        this.contents.fillRect(x + padding, y + padding, fillMaxW, fillH, ColorManager.gaugeBackColor());
+        this.contents.fillRect(x + padding, y + padding, fillMaxW, fillH, "#202020");
 
         const wReal = Math.floor(fillMaxW * Math.max(0, Math.min(1, rateReal)));
         const wBuffer = Math.floor(fillMaxW * Math.max(0, Math.min(1, rateBuffer)));
 
         if (rateReal < rateBuffer) {
             this.contents.fillRect(fillX, fillY, wBuffer, fillH, BUFFER_COLOR_DAMAGE);
-            this.contents.fillRect(fillX, fillY, wReal, fillH, color);
+            this.contents.gradientFillRect(fillX, fillY, wReal, fillH, c1, c2);
         } else {
             this.contents.fillRect(fillX, fillY, wReal, fillH, BUFFER_COLOR_HEAL);
-            this.contents.fillRect(fillX, fillY, wBuffer, fillH, color);
+            this.contents.gradientFillRect(fillX, fillY, wBuffer, fillH, c1, c2);
         }
     };
 
