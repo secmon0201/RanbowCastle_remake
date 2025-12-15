@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [系统] 菜单界面UI完全重绘 & 新存档界面 & 全局渐变光标 (彩虹城堡重置版专用)
+ * @plugindesc [系统] 菜单界面UI完全重绘 & 新存档界面 & 全局渐变光标 (彩虹城堡重置版专用 - 修复版)
  * @author 神枪手 & Gemini Optimization
  *
  * @param enableLoadCommand
@@ -32,7 +32,7 @@
  *
  * @help
  * ============================================================================
- * 🌈 彩虹城堡重置版 - UI 核心系统 (v2.0 融合版)
+ * 🌈 彩虹城堡重置版 - UI 核心系统 (v2.1 修复整合版)
  * ============================================================================
  * 本插件是专为《彩虹城堡》重制版定制的UI核心系统。
  * 已集成 Sq_GlobalGradientCursor 的全部功能。
@@ -277,6 +277,7 @@
         const y = p.faceY;
         const s = p.faceSize;
 
+        // 边框绘制逻辑已在 Module 10 中优化，此处保留基础调用结构
         this.contents.strokeRect(x, y, s, s, "rgba(255, 215, 0, 0.8)"); 
         this.contents.strokeRect(x - 1, y - 1, s + 2, s + 2, "rgba(0, 0, 0, 0.5)"); 
     };
@@ -1383,6 +1384,8 @@
         Window_EquipCommand, Window_EquipSlot, Window_EquipItem, Window_EquipStatus,
         Window_Status, Window_StatusParams, Window_StatusEquip,
         Window_Options, Window_SavefileList, Window_GameEnd,
+        // 【新增】商店界面的核心窗口
+        Window_ShopCommand, Window_ShopBuy, Window_ShopSell, Window_ShopStatus
     ];
 
     for (const WinClass of targetWindowClasses) {
@@ -1518,16 +1521,22 @@
         }
     };
 
-    // 5. 呼吸动画 (更慢、更浅)
+    // 5. 呼吸动画 (修复版：非激活时隐藏)
     Window.prototype._makeCursorAlpha = function() {
         const baseAlpha = this.contentsOpacity / 255;
+        
         if (this.active) {
+            // 激活状态：保留你原本的呼吸效果
             // 速度减慢: 0.12 -> 0.08
-            // 亮度区间: 0.6 ~ 0.9 (不再闪烁到全亮，保持克制)
+            // 亮度区间: 0.6 ~ 0.9
             const pulse = (Math.sin(this._animationCount * 0.08) + 1) / 2; 
             return baseAlpha * (0.6 + pulse * 0.3);
         }
-        return baseAlpha;
+        
+        // 【核心修复点】
+        // 非激活状态：直接返回 0 (完全透明/隐藏)
+        // 这样当焦点跳到其他窗口时，残留的金色边框就会立刻消失
+        return 0; 
     };
 
     // 6. 修正 ContentsBack 清理
@@ -1538,5 +1547,661 @@
         }
         _Window_Selectable_refresh.call(this);
     };
+// ========================================================================
+    // [Module 11] 商店界面完整重构 (Scene_Shop Complete Refactor)
+    // 模式：纯净描述版 (Text Description Mode)
+    // ========================================================================
+
+    const SQ_SHOP_CONFIG = {
+        cmdHeight: 70,      // 顶部指令窗口高度
+        goldWidth: 160,     // 金币窗口宽度
+        statusHeight: 290,  // 底部状态窗口高度 (保持较高，方便显示长描述)
+        fontSize: 22        // 商店列表基础字号
+    };
+
+    // ------------------------------------------------------------------------
+    // 1. 窗口位置布局 (Layout Rects)
+    // ------------------------------------------------------------------------
+
+    // 指令窗口 (左上)
+    Scene_Shop.prototype.commandWindowRect = function() {
+        const wx = 0;
+        const wy = 0; // 强制顶格
+        const ww = Graphics.boxWidth - SQ_SHOP_CONFIG.goldWidth;
+        const wh = SQ_SHOP_CONFIG.cmdHeight;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 金币窗口 (右上)
+    Scene_Shop.prototype.goldWindowRect = function() {
+        const ww = SQ_SHOP_CONFIG.goldWidth;
+        const wh = SQ_SHOP_CONFIG.cmdHeight;
+        const wx = Graphics.boxWidth - ww;
+        const wy = 0; // 强制顶格
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 占位/背景窗口
+    Scene_Shop.prototype.dummyWindowRect = function() {
+        const wx = 0;
+        const wy = SQ_SHOP_CONFIG.cmdHeight;
+        const ww = Graphics.boxWidth;
+        const wh = Graphics.boxHeight - wy;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 分类窗口
+    Scene_Shop.prototype.categoryWindowRect = function() {
+        const wx = 0;
+        const wy = SQ_SHOP_CONFIG.cmdHeight;
+        const ww = Graphics.boxWidth;
+        const wh = SQ_SHOP_CONFIG.cmdHeight;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 状态窗口 (底部固定 290px)
+    Scene_Shop.prototype.statusWindowRect = function() {
+        const ww = Graphics.boxWidth;
+        const wh = SQ_SHOP_CONFIG.statusHeight;
+        const wx = 0;
+        const wy = Graphics.boxHeight - wh;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 购买列表
+    Scene_Shop.prototype.buyWindowRect = function() {
+        const wx = 0;
+        const wy = SQ_SHOP_CONFIG.cmdHeight;
+        const ww = Graphics.boxWidth;
+        const wh = Graphics.boxHeight - wy - SQ_SHOP_CONFIG.statusHeight;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 出售列表
+    Scene_Shop.prototype.sellWindowRect = function() {
+        const wx = 0;
+        const wy = SQ_SHOP_CONFIG.cmdHeight * 2;
+        const ww = Graphics.boxWidth;
+        const wh = Graphics.boxHeight - wy - SQ_SHOP_CONFIG.statusHeight;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 数字输入窗口
+    Scene_Shop.prototype.numberWindowRect = function() {
+        const ww = 300;
+        const wh = this.calcWindowHeight(3, false);
+        const wx = (Graphics.boxWidth - ww) / 2;
+        const wy = (Graphics.boxHeight - wh) / 2 - 100;
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // ------------------------------------------------------------------------
+    // 2. 样式美化 (Shop Styling)
+    // ------------------------------------------------------------------------
+
+    Window_ShopBuy.prototype.maxCols = function() { return 1; };
+    Window_ShopSell.prototype.maxCols = function() { return 1; };
+    Window_ShopCommand.prototype.itemTextAlign = function() { return "center"; };
+
+    // 绘制列表项
+    Window_ShopBuy.prototype.drawItem = function(index) {
+        const item = this.itemAt(index);
+        const price = this.price(item);
+        const rect = this.itemLineRect(index);
+        const priceWidth = this.priceWidth();
+        const priceX = rect.x + rect.width - priceWidth;
+        const nameWidth = rect.width - priceWidth;
+
+        this.changePaintOpacity(this.isEnabled(item));
+        this.drawItemName(item, rect.x, rect.y, nameWidth);
+        this.contents.fontSize = SQ_SHOP_CONFIG.fontSize;
+        this.changeTextColor("#FFD700"); 
+        this.drawText(price, priceX, rect.y, priceWidth, "right");
+        this.changePaintOpacity(true);
+    };
+
+    // 金币窗口刷新
+    const _Window_Gold_refresh_shop = Window_Gold.prototype.refresh;
+    Window_Gold.prototype.refresh = function() {
+        if (SceneManager._scene instanceof Scene_Shop) {
+             const rect = this.itemLineRect(0);
+             this.contents.clear();
+             this.contents.fontSize = 22;
+             this.changeTextColor(ColorManager.systemColor());
+             this.drawCurrencyValue(this.value(), this.currencyUnit(), rect.x, rect.y, rect.width);
+             this.resetFontSettings();
+        } else {
+            _Window_Gold_refresh_shop.call(this);
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // 3. 状态窗口内容 (Text Description Logic)
+    // ------------------------------------------------------------------------
+
+    // 覆盖刷新逻辑：统一显示文字
+    Window_ShopStatus.prototype.refresh = function() {
+        this.contents.clear();
+        
+        // 无论有没有物品，都先画出框架，保证视觉不塌陷
+        const x = this.itemPadding();
+        const width = this.innerWidth - x * 2;
+        
+        // 1. 始终绘制分割线
+        this.drawRect(x, 40, width, 2); 
+
+        if (this._item) {
+            // --- 有物品时的显示逻辑 ---
+            
+            // 顶部：持有数
+            this.drawShopPossession(x, 0, width);
+            
+            // 内容区：统一显示文本描述/故事
+            this.drawShopItemDesc(x, 50, width);
+            
+        } else {
+            // --- 没有选中物品时的显示逻辑 ---
+            
+            // 顶部：显示空的持有数 (视觉占位)
+            this.drawEmptyPossession(x, 0, width);
+            
+            // 内容区：显示提示文本
+            this.drawEmptyStateHint(x, 50, width);
+        }
+    };
+
+    // 绘制持有数
+    Window_ShopStatus.prototype.drawShopPossession = function(x, y, width) {
+        this.resetFontSettings();
+        this.contents.fontSize = 24;
+        this.changeTextColor(ColorManager.systemColor());
+        this.drawText(TextManager.possession, x, y, width);
+        this.resetTextColor();
+        const num = $gameParty.numItems(this._item);
+        this.drawText(num, x, y, width, "right");
+    };
+
+    // 绘制物品/装备描述
+    Window_ShopStatus.prototype.drawShopItemDesc = function(x, y, width) {
+        // 读取优先级：装备故事 > 物品故事 > 默认说明
+        let text = this._item.meta.equipStory || this._item.meta.itemStory || this._item.description;
+        
+        if (text) {
+            this.resetFontSettings();
+            this.contents.fontSize = 22; // 设置一个舒适的阅读字号
+            
+            // 如果是 Story (小作文)，用金色显示；普通说明用默认白色
+            const isStory = this._item.meta.equipStory || this._item.meta.itemStory;
+            this.changeTextColor(isStory ? "#FFD700" : "#ffffff");
+            
+            // 绘制文本 (支持 \n 换行 和 \C[n] 颜色代码)
+            this.drawTextEx(text, x, y, width);
+        }
+    };
+
+    // [Fix Integration] 补全缺失的装备列表绘制函数
+    // 即使在文本模式下，保留此函数以防其他逻辑调用导致报错
+    Window_ShopStatus.prototype.drawEquipActorList = function(x, y, width) {
+        const members = this.statusMembers(); // 获取当前页队友
+        const lineHeight = this.lineHeight();
+        
+        // 遍历队友并在底部窗口绘制装备能力对比
+        for (let i = 0; i < members.length; i++) {
+            // 动态计算Y坐标：使用 1.6 倍行高，让排版更紧凑，适配竖屏底部空间
+            const actorY = y + Math.floor(lineHeight * i * 1.6);
+            
+            // 调用单人绘制函数
+            this.drawActorEquipInfo(x, actorY, members[i]);
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // 4. 系统位置修复 (Core Fix)
+    // ------------------------------------------------------------------------
+    Scene_Shop.prototype.createCommandWindow = function() {
+        const rect = this.commandWindowRect();
+        this._commandWindow = new Window_ShopCommand(rect);
+        this._commandWindow.setPurchaseOnly(this._purchaseOnly);
+        this._commandWindow.y = rect.y; // 强制使用 rect.y
+        this._commandWindow.setHandler("buy", this.commandBuy.bind(this));
+        this._commandWindow.setHandler("sell", this.commandSell.bind(this));
+        this._commandWindow.setHandler("cancel", this.popScene.bind(this));
+        this.addWindow(this._commandWindow);
+    };
+    // ========================================================================
+    // [Module 12] 商店数量输入窗口修复 (Shop Number Input Fix)
+    // 目标：修正OK按钮显示不全问题 (适配宽按钮布局)
+    // ========================================================================
+
+    // 1. 调整窗口大小和位置 (加宽以容纳 OK 长按钮)
+    Scene_Shop.prototype.numberWindowRect = function() {
+        const ww = 380; // 【修改】宽度增加到 380
+        // 高度 = 4行文字区域 + 底部按钮区域 + 留白
+        const wh = this.calcWindowHeight(4, false) + 60; 
+        const wx = (Graphics.boxWidth - ww) / 2;
+        // 稍微向上偏移一点，避免被手指遮挡
+        const wy = (Graphics.boxHeight - wh) / 2 - 50; 
+        return new Rectangle(wx, wy, ww, wh);
+    };
+
+    // 2. 重写初始化
+    const _Window_ShopNumber_initialize = Window_ShopNumber.prototype.initialize;
+    Window_ShopNumber.prototype.initialize = function(rect) {
+        _Window_ShopNumber_initialize.call(this, rect);
+        
+        // 加载 Battlewindow 皮肤
+        this.loadWindowskin(); 
+        
+        // 开启不透明度，显示窗口背景
+        this.opacity = 255; 
+        this.backOpacity = 255; 
+        
+        this.createButtons(); 
+    };
+
+    Window_ShopNumber.prototype.loadWindowskin = function() {
+        this.windowskin = ImageManager.loadSystem("Battlewindow");
+    };
+
+    // 3. 重写刷新逻辑
+    Window_ShopNumber.prototype.refresh = function() {
+        Window_Selectable.prototype.refresh.call(this);
+        
+        // 绘制商品信息
+        this.drawCurrentItemName();
+        this.drawMultiplicationSign();
+        this.drawNumber();
+        this.drawHorzLine(); 
+        this.drawTotalPrice();
+        
+        // 刷新按钮位置
+        this.placeButtons();
+    };
+
+    // 4. 创建按钮 (修改版：隐藏 +/- 10 按钮)
+    Window_ShopNumber.prototype.createButtons = function() {
+        if (this._buttons) {
+            this._buttons.forEach(btn => {
+                if (btn.parent === this._clientArea) {
+                    this._clientArea.removeChild(btn);
+                }
+            });
+        }
+        this._buttons = [];
+        
+        // 【修改点】数组中删除了 "down2" 和 "up2"，只保留 减、加、OK
+        const types = ["down", "up", "ok"];
+        
+        for (const type of types) {
+            const button = new Sprite_Button(type);
+            this._buttons.push(button);
+            this.addInnerChild(button);
+        }
+        
+        // 【修改点】重新绑定按键索引
+        // 索引 0 是 down (减1)
+        this._buttons[0].setClickHandler(this.onButtonDown.bind(this));
+        // 索引 1 是 up (加1)
+        this._buttons[1].setClickHandler(this.onButtonUp.bind(this));
+        // 索引 2 是 ok (确认)
+        this._buttons[2].setClickHandler(this.onButtonOk.bind(this));
+    };
+    // 5. 【核心修复】按钮智能布局算法
+    Window_ShopNumber.prototype.placeButtons = function() {
+        const spacing = 8; // 按钮间距稍微调小一点，更紧凑
+        let totalWidth = 0;
+
+        // 第一步：计算所有按钮加起来的实际总宽度
+        // (因为 OK 键是 96px，其他是 48px，不能直接乘)
+        for (const button of this._buttons) {
+            totalWidth += button.width;
+        }
+        // 加上间距的总宽度
+        totalWidth += (this._buttons.length - 1) * spacing;
+
+        // 第二步：计算起始 X 坐标 (居中)
+        let currentX = (this.innerWidth - totalWidth) / 2;
+        
+        // Y坐标：贴近窗口底部
+        // 按钮高度通常是 48，留出底部 padding
+        const buttonY = this.innerHeight - 48 - 6; 
+
+        // 第三步：放置按钮
+        for (const button of this._buttons) {
+            button.x = currentX;
+            button.y = buttonY;
+            button.visible = true; 
+            
+            // 下一个按钮的 X 坐标 = 当前X + 当前按钮宽 + 间距
+            currentX += button.width + spacing;
+        }
+    };
+
+    // 6. 调整文字内容的纵向布局
     
+    // 物品名 (第1行)
+    Window_ShopNumber.prototype.itemNameY = function() { 
+        return 12; 
+    };
+    
+    // 乘号和数量 (第1行)
+    Window_ShopNumber.prototype.multiplicationSignY = function() { 
+        return this.itemNameY(); 
+    };
+    
+    // 绘制乘号
+    Window_ShopNumber.prototype.drawMultiplicationSign = function() {
+        const sign = "\u00d7";
+        const width = this.textWidth(sign);
+        const x = this.cursorX() - width * 2;
+        const y = this.itemNameY(); 
+        this.resetTextColor();
+        this.drawText(sign, x, y, width);
+    };
+    
+    // 绘制数量
+    Window_ShopNumber.prototype.drawNumber = function() {
+        const x = this.cursorX();
+        const y = this.itemNameY();
+        const width = this.cursorWidth() - this.itemPadding();
+        this.resetTextColor();
+        this.contents.fontSize = 28; 
+        this.changeTextColor("#00FF00"); 
+        this.drawText(this._number, x, y, width, "right");
+        this.resetFontSettings();
+    };
+
+    // 分割线 (第2行)
+    Window_ShopNumber.prototype.drawHorzLine = function() {
+        const padding = this.itemPadding();
+        const y = this.itemNameY() + this.lineHeight() + 10;
+        const width = this.innerWidth - padding * 2;
+        
+        this.contents.fillRect(padding, y, width, 2, "rgba(255, 255, 255, 0.3)");
+    };
+
+    // 总价 (第3行)
+    Window_ShopNumber.prototype.totalPriceY = function() {
+        return this.itemNameY() + this.lineHeight() + 24;
+    };
+    // ========================================================================
+    // [Module 13] 商店悬浮弹窗交互与层级修复 (Shop Overlay & Z-Index Fix)
+    // 目标：
+    // 1. 点击购买时不隐藏列表
+    // 2. 修复层级，确保弹窗在最上层
+    // 3. 背景变暗聚焦
+    // ========================================================================
+
+    // ------------------------------------------------------------------------
+    // 1. 层级修复 (Z-Index Fix)
+    // ------------------------------------------------------------------------
+    const _Scene_Shop_create = Scene_Shop.prototype.create;
+    Scene_Shop.prototype.create = function() {
+        // 先运行原版创建流程（生成所有窗口）
+        _Scene_Shop_create.call(this);
+        
+        // 【核心修复】将数量窗口(_numberWindow) 移动到窗口层的最顶端
+        // 因为原版它是先创建的，如果不移到最后，会被后创建的列表窗口挡住
+        if (this._numberWindow) {
+            this._windowLayer.removeChild(this._numberWindow);
+            this._windowLayer.addChild(this._numberWindow);
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // 2. 交互逻辑重写 (不再隐藏列表)
+    // ------------------------------------------------------------------------
+    
+    // 点击“购买”确认时
+    Scene_Shop.prototype.onBuyOk = function() {
+        this._item = this._buyWindow.item();
+        
+        // 【关键】删除了原版的 this._buyWindow.hide();
+        // 列表保持显示，但失去焦点
+        
+        this._numberWindow.setup(this._item, this.maxBuy(), this.buyingPrice());
+        this._numberWindow.setCurrencyUnit(this.currencyUnit());
+        this._numberWindow.show();
+        this._numberWindow.activate();
+    };
+
+    // 点击“出售”确认时
+    Scene_Shop.prototype.onSellOk = function() {
+        this._item = this._sellWindow.item();
+        
+        // 【关键】删除了原版的 this._categoryWindow.hide() 和 this._sellWindow.hide();
+        // 保持出售列表可见
+        
+        this._numberWindow.setup(this._item, this.maxSell(), this.sellingPrice());
+        this._numberWindow.setCurrencyUnit(this.currencyUnit());
+        this._numberWindow.show();
+        this._numberWindow.activate();
+        
+        this._statusWindow.setItem(this._item);
+        this._statusWindow.show();
+    };
+
+    // 取消数量选择时 (恢复列表状态)
+    const _Scene_Shop_onNumberCancel = Scene_Shop.prototype.onNumberCancel;
+    Scene_Shop.prototype.onNumberCancel = function() {
+        SoundManager.playCancel();
+        this._numberWindow.hide();
+        
+        // 恢复列表窗口的透明度
+        this._buyWindow.alpha = 1;
+        this._sellWindow.alpha = 1;
+        this._statusWindow.alpha = 1;
+        this._dummyWindow.alpha = 1;
+
+        switch (this._commandWindow.currentSymbol()) {
+            case "buy":
+                this._buyWindow.activate();
+                break;
+            case "sell":
+                this._sellWindow.activate();
+                this._statusWindow.setItem(null);
+                this._helpWindow.clear();
+                break;
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // 3. 视觉聚焦 (Dim Background)
+    // ------------------------------------------------------------------------
+    
+    const _Scene_Shop_update = Scene_Shop.prototype.update;
+    Scene_Shop.prototype.update = function() {
+        _Scene_Shop_update.call(this);
+        
+        // 当数量窗口激活（显示）时，让其他窗口变暗，形成遮罩效果
+        if (this._numberWindow && this._numberWindow.visible) {
+            const dimAlpha = 0.4; // 背景变暗程度 (0~1)
+            
+            this._buyWindow.alpha = dimAlpha;
+            this._sellWindow.alpha = dimAlpha;
+            this._statusWindow.alpha = dimAlpha;
+            this._dummyWindow.alpha = dimAlpha;
+            this._goldWindow.alpha = dimAlpha;
+            this._commandWindow.alpha = dimAlpha;
+            
+            // 确保数量窗口自己是全亮的
+            this._numberWindow.alpha = 1;
+        } else {
+            // 恢复全亮（为了防止残留，在update里持续检测比较稳妥）
+            this._buyWindow.alpha = 1;
+            this._sellWindow.alpha = 1;
+            this._statusWindow.alpha = 1;
+            this._dummyWindow.alpha = 1;
+            this._goldWindow.alpha = 1;
+            this._commandWindow.alpha = 1;
+        }
+    };
+    // ========================================================================
+    // [Module 14] 出售界面统一 (Unified Sell Interface)
+    // 目标：使出售界面的底部信息显示与购买界面一致（大窗口+详细描述）
+    // ========================================================================
+
+    // 1. 劫持 createSellWindow，隐藏原版 helpWindow 并关联 statusWindow
+    const _Scene_Shop_createSellWindow = Scene_Shop.prototype.createSellWindow;
+    Scene_Shop.prototype.createSellWindow = function() {
+        _Scene_Shop_createSellWindow.call(this);
+        
+        // 关键步骤：把出售列表关联到底部的大状态窗口，而不是顶部的帮助窗口
+        if (this._sellWindow) {
+            this._sellWindow.setStatusWindow(this._statusWindow);
+            
+            // 覆盖原版的 setHelpWindow，防止它去更新那个我们要隐藏的小窗口
+            // 这样 _sellWindow 就只会更新 _statusWindow 了
+            this._sellWindow.setHelpWindow(null); 
+        }
+    };
+
+    // 2. 劫持 commandSell，点击“出售”时切换界面状态
+    const _Scene_Shop_commandSell = Scene_Shop.prototype.commandSell;
+    Scene_Shop.prototype.commandSell = function() {
+        _Scene_Shop_commandSell.call(this);
+        
+        // 隐藏原版顶部帮助窗口
+        if (this._helpWindow) {
+            this._helpWindow.hide();
+        }
+        
+        // 显示并清空底部大窗口
+        if (this._statusWindow) {
+            this._statusWindow.show();
+            this._statusWindow.setItem(null);
+        }
+        
+        // 强制刷新出售列表，确保第一次选中项能更新底部窗口
+        this._sellWindow.refresh();
+        this._sellWindow.select(0); // 选中第一项，触发 updateHelp
+    };
+
+    // 3. 劫持 onCategoryCancel，退出出售模式时恢复状态
+    const _Scene_Shop_onCategoryCancel = Scene_Shop.prototype.onCategoryCancel;
+    Scene_Shop.prototype.onCategoryCancel = function() {
+        _Scene_Shop_onCategoryCancel.call(this);
+        
+        // 隐藏底部大窗口
+        if (this._statusWindow) {
+            this._statusWindow.hide();
+        }
+        
+        // 恢复原版帮助窗口（如果其他界面需要用到的话）
+        // 但在这个重构里，我们几乎全程都不用原版帮助窗口了，所以这步可选
+    };
+
+    // 4. 给 Window_ShopSell 添加 setStatusWindow 方法
+    // 因为原版 Window_ShopSell 没有这个方法，我们要补上
+    Window_ShopSell.prototype.setStatusWindow = function(statusWindow) {
+        this._statusWindow = statusWindow;
+        this.callUpdateHelp();
+    };
+
+    // 5. 重写 Window_ShopSell 的 updateHelp
+    // 让它去更新 statusWindow 而不是 helpWindow
+    Window_ShopSell.prototype.updateHelp = function() {
+        // 原版是 this._helpWindow.setItem(item);
+        // 我们改为：
+        if (this._statusWindow) {
+            this._statusWindow.setItem(this.item());
+        }
+    };
+
+    // [Fix Integration] 修复商店出售模式下底部窗口消失的问题
+    // logic: 修正 activateSellWindow 中的显示逻辑，强制显示 StatusWindow
+    Scene_Shop.prototype.activateSellWindow = function() {
+        // 1. 如果有分类窗口且需要选择，保持显示
+        if (this._categoryWindow.needsSelection()) {
+            this._categoryWindow.show();
+        }
+        
+        // 2. 刷新并激活出售列表
+        this._sellWindow.refresh();
+        this._sellWindow.show();
+        this._sellWindow.activate();
+        
+        // 3. 【核心修复】这里原版逻辑是 hide()，现强制改为 show()
+        // 配合 Module 14 的逻辑，确保出售时也能看到底部的大状态窗口
+        if (this._statusWindow) {
+            this._statusWindow.show();
+            this._statusWindow.open(); // 确保它是打开状态
+            
+            // 4. 立即同步一次当前选中的物品信息
+            // 防止刚进入时显示为空或显示上一次残留的信息
+            const item = this._sellWindow.item();
+            this._statusWindow.setItem(item);
+        }
+    };
+
+    // ========================================================================
+    // [Module 15] 商店状态窗口空状态修复 (Shop Status Empty State Fix)
+    // 目标：解决选中分类或未选中物品时，下方窗口内容消失的问题
+    // ========================================================================
+
+    // 辅助：绘制空状态下的持有数栏
+    Window_ShopStatus.prototype.drawEmptyPossession = function(x, y, width) {
+        this.resetFontSettings();
+        this.contents.fontSize = 24;
+        this.changeTextColor(ColorManager.systemColor());
+        this.drawText(TextManager.possession, x, y, width);
+        
+        this.resetTextColor();
+        this.changeTextColor("rgba(255, 255, 255, 0.5)"); // 灰色
+        this.drawText("-", x, y, width, "right");
+    };
+
+    // 辅助：绘制空状态提示语
+    Window_ShopStatus.prototype.drawEmptyStateHint = function(x, y, width) {
+        const text = "请选择要操作的物品...";
+        
+        this.resetFontSettings();
+        this.contents.fontSize = 22;
+        this.changeTextColor("rgba(255, 255, 255, 0.4)"); // 半透明灰色
+        
+        // 垂直居中显示提示
+        const centerY = y + (this.innerHeight - y) / 2 - 20;
+        this.drawText(text, x, y, width, "center");
+    };
+    
+    // 2. 修复分类窗口逻辑，确保切换分类时底部窗口能收到“空”信号
+    const _Window_ItemCategory_update_fix = Window_ItemCategory.prototype.update;
+    Window_ItemCategory.prototype.update = function() {
+        _Window_ItemCategory_update_fix.call(this);
+        
+        if (this.active && this._itemWindow) {
+            const item = this._itemWindow.item();
+            // 只要是在分类选择状态，且没有选中具体物品，就强制刷新底部为 null
+            // 这样就能触发上面的 drawEmptyStateHint
+            if (this._itemWindow._statusWindow) {
+                this._itemWindow._statusWindow.setItem(item);
+            }
+        }
+    };
+    // ========================================================================
+    // [Module 16] 商店背景窗口皮肤修复 (Shop Dummy Window Fix)
+    // ========================================================================
+    const _Scene_Shop_createDummyWindow = Scene_Shop.prototype.createDummyWindow;
+    Scene_Shop.prototype.createDummyWindow = function() {
+        // 在创建占位窗口前，临时劫持 Window_Base 的 loadWindowskin
+        const tempLoadWindowskin = Window_Base.prototype.loadWindowskin;
+        Window_Base.prototype.loadWindowskin = function() {
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
+        };
+
+        _Scene_Shop_createDummyWindow.call(this);
+
+        // 创建完成后恢复原状，以免影响游戏中其他普通窗口
+        Window_Base.prototype.loadWindowskin = tempLoadWindowskin;
+        
+        // 确保不透明度和背景设置正确
+        if (this._dummyWindow) {
+            this._dummyWindow.opacity = 255;
+            this._dummyWindow.backOpacity = 255;
+            // 移除可能存在的渐变背景精灵，确保样式统一
+            if (this._dummyWindow._dimmerSprite) {
+                this._dummyWindow._dimmerSprite.visible = false;
+            }
+        }
+    };
 })();

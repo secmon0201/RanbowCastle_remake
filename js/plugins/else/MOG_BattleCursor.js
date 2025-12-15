@@ -793,68 +793,96 @@
     window.Sprite_BattleCursor = BattleCursorSprite;
 
     //=============================================================================
-    // ■■■ Window_BattleTargetName (右下角名称窗口) ■■■
-    //=============================================================================
-    function Window_BattleTargetName() {
-        this.initialize.apply(this, arguments);
-    }
-    Window_BattleTargetName.prototype = Object.create(Window_Base.prototype);
-    Window_BattleTargetName.prototype.constructor = Window_BattleTargetName;
+    // ■■■ Window_BattleTargetName (右下角名称窗口) ■■■
+    //=============================================================================
+    function Window_BattleTargetName() {
+        this.initialize.apply(this, arguments);
+    }
+    Window_BattleTargetName.prototype = Object.create(Window_Base.prototype);
+    Window_BattleTargetName.prototype.constructor = Window_BattleTargetName;
 
-    Window_BattleTargetName.prototype.initialize = function(rect) {
-        Window_Base.prototype.initialize.call(this, rect);
-        this._currentTarget = null;
-        this.visible = false;
-        this.opacity = 255;
-        this.contents.fontSize = 20;
-    };
+    Window_BattleTargetName.prototype.initialize = function(rect) {
+        Window_Base.prototype.initialize.call(this, rect);
+        this.loadWindowskin(); 
+        this._currentTarget = null;
+        this.visible = false;
+        this.opacity = 255;    
+        this.backOpacity = 255;
+        this.contents.fontSize = 22; // 稍微调大一点字号，看着更舒服
+    };
 
-    Window_BattleTargetName.prototype.updateTarget = function(target) {
-        if (this._lastTarget === target) return;
-        this._lastTarget = target;
-        this.contents.clear();
-        
-        if (target) {
-            let text = "";
-            if (typeof target === "string") {
-                text = target;
-            } else if (target.name) {
-                text = target.name();
-            }
-            this.contents.drawText(text, 0, 0, this.contentsWidth(), this.lineHeight(), "center");
-            this.visible = true;
-        } else {
-            this.visible = false;
-        }
-    };
+    Window_BattleTargetName.prototype.loadWindowskin = function() {
+        this.windowskin = ImageManager.loadSystem("Battlewindow");
+    };
 
-    Window_BattleTargetName.prototype.update = function() {
-        Window_Base.prototype.update.call(this);
-        this.syncSelectedTarget();
-    };
+    Window_BattleTargetName.prototype.updateTarget = function(target) {
+        if (this._lastTarget === target) return;
+        this._lastTarget = target;
+        this.contents.clear();
+        
+        if (target) {
+            let text = "";
+            if (typeof target === "string") {
+                text = target;
+            } else if (target.name) {
+                text = target.name();
+            }
+            
+            // 【修改】设置颜色为金黄色，与你的UI风格统一
+            this.changeTextColor("#FFD700"); 
+            
+            this.contents.drawText(text, 0, 0, this.contentsWidth(), this.lineHeight(), "center");
+            
+            // 绘制完后重置回默认颜色（好习惯）
+            this.resetTextColor();
+            
+            this.visible = true;
+        } else {
+            this.visible = false;
+        }
+    };
 
-    Window_BattleTargetName.prototype.syncSelectedTarget = function() {
-        let targetData = null;
-        const isForAll = $gameTemp._mogBattleCursor.isForAll;
-        const isForEveryone = $gameTemp._mogBattleCursor.isForEveryone;
+    Window_BattleTargetName.prototype.update = function() {
+        Window_Base.prototype.update.call(this);
+        this.syncSelectedTarget();
+    };
 
-        if (SceneManager._scene._enemyWindow && SceneManager._scene._enemyWindow.active) {
-            if (isForAll || isForEveryone) {
-                targetData = Moghunter.textAllEnemies; 
-            } else {
-                targetData = SceneManager._scene._enemyWindow.enemy();
-            }
-        } else if (SceneManager._scene._actorWindow && SceneManager._scene._actorWindow.active) {
-            // 如果 MOG 禁用了角色选择，这里其实也不用显示名称窗口了，因为原版窗口会有高亮
-            // 但保留它也无妨，或者你可以根据需求在这里加判断
-            if (isForAll || isForEveryone) {
-                targetData = Moghunter.textAllAllies;
-            } else {
-                targetData = SceneManager._scene._actorWindow.actor();
-            }
-        }
-        this.updateTarget(targetData);
-    };
+    Window_BattleTargetName.prototype.syncSelectedTarget = function() {
+        let targetData = null;
+        const isForAll = $gameTemp._mogBattleCursor.isForAll;
+        const isForEveryone = $gameTemp._mogBattleCursor.isForEveryone;
+
+        if (SceneManager._scene._enemyWindow && SceneManager._scene._enemyWindow.active) {
+            if (isForAll || isForEveryone) {
+                targetData = Moghunter.textAllEnemies; 
+            } else {
+                targetData = SceneManager._scene._enemyWindow.enemy();
+            }
+        } else if (SceneManager._scene._actorWindow && SceneManager._scene._actorWindow.active) {
+            if (isForAll || isForEveryone) {
+                targetData = Moghunter.textAllAllies;
+            } else {
+                targetData = SceneManager._scene._actorWindow.actor();
+            }
+        }
+        this.updateTarget(targetData);
+    };
+
+    // 强制紧贴右下角
+    Spriteset_Battle.prototype.createBattleNameWindow = function() {
+        const xOffset = 0; 
+        const yOffset = 0; 
+
+        const rect = new Rectangle(
+            Graphics.boxWidth - Moghunter.windowWidth - xOffset,
+            Graphics.boxHeight - Moghunter.windowHeight - yOffset,
+            Moghunter.windowWidth,
+            Moghunter.windowHeight
+        );
+        this._battleNameWindow = new Window_BattleTargetName(rect);
+        this._battleNameWindow.z = 100;
+        this.addChild(this._battleNameWindow);
+    };
 // =============================================================================
     // ■■■ 兼容补丁: Sec_BossMechanics 召唤兽光标修复 ■■■
     // =============================================================================
