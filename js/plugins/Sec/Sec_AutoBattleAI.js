@@ -1,35 +1,33 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 智能自动战斗 AI (v4.0 终极战术版)
+ * @plugindesc [战斗] 智能自动战斗 AI (v19.0 续航大师版)
  * @author AI Architect
  * @orderAfter Sec_BattleSystemInstance
  *
  * @help
  * ============================================================================
- * 这是一个拥有“全局伤害模拟”能力的战术级 AI。
- * 它不再依赖死板的权重，而是通过计算“期望总伤害”来做决策。
+ * 这是一个深度适配 Sec_BattleSystemInstance.js 的战术 AI。
+ * v19.0 引入了资源消耗(MP/TP)计算，懂得“省蓝续航”，并完美支持普攻群奶流派。
  *
- * 【v4.0 核心逻辑】
- * 1. 伤害模拟：
- * 总分 = 基础伤 + 机制伤(斩杀/蓄力) + 溅射伤(AOE) + 队友协战伤(Synergy)
- * AI 会选择【总分】最高的技能和目标。
+ * 【v19.0 核心进化】
+ * 1. 性价比计算 (Cost Awareness)：
+ * - 引入 MP/TP 惩罚机制。每消耗 1 点 MP，技能评分会扣除一定分数。
+ * - 结果：在治疗量相近的情况下，AI 会绝对优先选择不耗蓝的技能 (如普攻触发连招)。
+ * - 只有在“救命”时刻，高额的治疗加分才会压倒蓝耗的扣分。
  *
- * 2. 状态运营：
- * - <状态循环>: 没满层时优先叠层；满层后停止叠层，转为引爆。
- * - <状态交互>: 只有在伤害收益超过叠层收益，或能斩杀时才使用。
+ * 2. 交互治疗“正名”：
+ * - 普攻触发的状态交互回血 (Interact Heal)，现在完全享受 [濒死/普通] 治疗倍率加成。
+ * - 系统会对比：[技能A群奶总量] vs [普攻触发Buff群奶总量]。
+ * - 结合蓝耗计算，普攻流奶妈将展现出强大的续航智能。
  *
- * 3. 力场共鸣：
- * - Spread (扩散): 场上感染人数少时，优先扩散。
- * - Gather (聚焦): 场上感染人数多时，优先聚焦爆发。
- *
- * 4. 智能辅助：
- * - 自动检测状态是否存在，杜绝重复上 Buff/开启光环。
- * - 蓄力期间绝不使用受击蓄力技能（保护蓄力池）。
+ * 3. 种地/收菜循环：
+ * - 没Buff时：优先放技能上Buff (种地)。
+ * - 有Buff时：上Buff技能扣分，优先用普攻触发回血 (收菜)。
  *
  * ============================================================================
  *
  * @param ---Button Settings---
- * @text [按钮设置]
+ * @text [界面: 按钮设置]
  * @default
  *
  * @param ButtonX
@@ -50,36 +48,143 @@
  * @type number
  * @default 32
  *
- * @param ---Weights---
- * @text [战术修正]
- * @desc 虽然主要靠伤害计算，但治疗和控制仍需额外权重修正。
+ * @param ---Cost Settings---
+ * @text [AI: 资源性价比]
+ * @desc 越高的惩罚值，AI 越抠门 (越喜欢用普攻)。
+ * @default
+ *
+ * @param WeightMP
+ * @parent ---Cost Settings---
+ * @text MP 消耗惩罚
+ * @desc 每消耗 1 点 MP 扣除的评分。
+ * @type number
+ * @default 20
+ *
+ * @param WeightTP
+ * @parent ---Cost Settings---
+ * @text TP 消耗惩罚
+ * @desc 每消耗 1 点 TP 扣除的评分。
+ * @type number
+ * @default 10
+ *
+ * @param ---Thresholds---
+ * @text [AI: 心理阈值]
+ * @default
+ *
+ * @param HpCrisis
+ * @parent ---Thresholds---
+ * @text 濒死警戒线 (%)
+ * @desc 队友血量低于此百分比时，进入救命模式。
+ * @type number
+ * @default 40
+ *
+ * @param HpHeal
+ * @parent ---Thresholds---
+ * @text 起奶安全线 (%)
+ * @desc 队友血量高于此百分比时，不考虑普通治疗。
+ * @type number
+ * @default 80
+ *
+ * @param ---Balance Settings---
+ * @text [AI: 数值平衡]
+ * @default
+ *
+ * @param WeightDamage
+ * @parent ---Balance Settings---
+ * @text [倍率] 伤害价值
+ * @type number
+ * @default 1.0
+ *
+ * @param HealNormMult
+ * @parent ---Balance Settings---
+ * @text [倍率] 普通回血价值
+ * @desc 建议 1.5。
+ * @type number
+ * @default 1.5
+ *
+ * @param HealCritMult
+ * @parent ---Balance Settings---
+ * @text [倍率] 濒死回血价值
+ * @desc 建议 20.0。
+ * @type number
+ * @default 20.0
+ *
+ * @param ---Tactical Weights---
+ * @text [AI: 战术倾向]
  * @default
  *
  * @param WeightHealCrisis
- * @parent ---Weights---
- * @text 救命治疗权重
+ * @parent ---Tactical Weights---
+ * @text [极高] 救命优先权
+ * @type number
+ * @default 15000
+ *
+ * @param WeightLethal
+ * @parent ---Tactical Weights---
+ * @text [极高] 确杀优先权
  * @type number
  * @default 10000
  *
+ * @param WeightCycle
+ * @parent ---Tactical Weights---
+ * @text [高] 叠层运营权重
+ * @type number
+ * @default 3500
+ *
  * @param WeightControl
- * @parent ---Weights---
- * @text 控制/推拉权重
+ * @parent ---Tactical Weights---
+ * @text [高] 控制/推拉权重
+ * @type number
+ * @default 3000
+ *
+ * @param WeightGuardian
+ * @parent ---Tactical Weights---
+ * @text [高] 守护光环权重
  * @type number
  * @default 3000
  *
  * @param WeightSpread
- * @parent ---Weights---
- * @text 扩散(Spread)战术分
- * @desc 当需要扩散状态时附加的战术分。
+ * @parent ---Tactical Weights---
+ * @text [中] 扩散(Spread)战术分
+ * @type number
+ * @default 2500
+ *
+ * @param WeightSetup
+ * @parent ---Tactical Weights---
+ * @text [中] 铺垫(种地)战术分
  * @type number
  * @default 2000
  *
- * @param WeightCycle
- * @parent ---Weights---
- * @text 叠层(Cycle)战术分
- * @desc 当状态未满层时附加的战术分。
+ * @param WeightRelease
+ * @parent ---Tactical Weights---
+ * @text [中] 蓄力释放战术分
  * @type number
- * @default 2500
+ * @default 2000
+ *
+ * @param WeightCombo
+ * @parent ---Tactical Weights---
+ * @text [中] 引爆/交互基础分
+ * @type number
+ * @default 1500
+ *
+ * @param WeightComboSpecial
+ * @parent ---Tactical Weights---
+ * @text [中] 普攻群奶特权分
+ * @desc 给予能触发连招的普攻额外加分。
+ * @type number
+ * @default 1000
+ *
+ * @param WeightBuffPerUnit
+ * @parent ---Tactical Weights---
+ * @text [低] 单人Buff收益分
+ * @type number
+ * @default 800
+ *
+ * @param WeightAOE
+ * @parent ---Tactical Weights---
+ * @text [低] AOE基础加分
+ * @type number
+ * @default 500
  *
  */
 
@@ -89,20 +194,38 @@
     const pluginName = "Sec_AutoBattleAI";
     const parameters = PluginManager.parameters(pluginName);
     
+    // 参数配置
     const Conf = {
         btnX: Number(parameters['ButtonX'] || 26),
         btnY: Number(parameters['ButtonY'] || 310),
         btnSize: Number(parameters['ButtonSize'] || 32),
-        // 战术权重 (用于非伤害类决策)
-        wHealCrisis: Number(parameters['WeightHealCrisis'] || 10000),
-        wHealNormal: 2000,
-        wControl: Number(parameters['WeightControl'] || 3000),
-        wGuardian: 3000,
-        wSpread: Number(parameters['WeightSpread'] || 2000),
-        wCycle: Number(parameters['WeightCycle'] || 2500),
+        
+        // 消耗惩罚 [New v19.0]
+        wMP: Number(parameters['WeightMP'] || 20),
+        wTP: Number(parameters['WeightTP'] || 10),
+
         // 阈值
-        hpCrisis: 0.4,
-        hpHeal: 0.7
+        hpCrisis: Number(parameters['HpCrisis'] || 40) / 100,
+        hpHeal: Number(parameters['HpHeal'] || 80) / 100,
+        
+        // 平衡
+        wDmgMult: Number(parameters['WeightDamage'] || 1.0),
+        healNormMult: Number(parameters['HealNormMult'] || 1.5),
+        healCritMult: Number(parameters['HealCritMult'] || 20.0),
+        
+        // 战术权重
+        wHealCrisis: Number(parameters['WeightHealCrisis'] || 15000),
+        wLethal: Number(parameters['WeightLethal'] || 10000),
+        wCycle: Number(parameters['WeightCycle'] || 3500),
+        wControl: Number(parameters['WeightControl'] || 3000),
+        wGuardian: Number(parameters['WeightGuardian'] || 3000),
+        wSpread: Number(parameters['WeightSpread'] || 2500),
+        wSetup: Number(parameters['WeightSetup'] || 2000),
+        wRelease: Number(parameters['WeightRelease'] || 2000),
+        wCombo: Number(parameters['WeightCombo'] || 1500),
+        wComboSpecial: Number(parameters['WeightComboSpecial'] || 1000),
+        wBuffPerUnit: Number(parameters['WeightBuffPerUnit'] || 800),
+        wAOE: Number(parameters['WeightAOE'] || 500)
     };
 
     // ======================================================================
@@ -130,18 +253,22 @@
     };
 
     // ======================================================================
-    // 2. 核心计算引擎 (Calculator)
+    // 2. 核心计算引擎
     // ======================================================================
 
-    // 2.1 安全伤害估算
-    Game_Actor.prototype.secEvalDamageFormula = function(formula, target, baseDamage) {
+    // 2.1 安全公式计算
+    Game_Actor.prototype.secEvalFormula = function(formula, context) {
         try {
-            const a = this;
-            const b = target;
+            const a = context.a || this;
+            const b = context.b;
+            if (!b) return 0;
+
             const v = $gameVariables._data;
-            const d = baseDamage || 0; 
-            // 简单的沙盒模拟，替换 d 为数值
-            // 注意：复杂的 JS 逻辑可能无法完美模拟，这里只做数值近似
+            const d = context.d !== undefined ? context.d : 0;
+            const dmg = d; 
+            const damage = d;
+            const origin = context.origin || b;
+
             const value = eval(formula);
             return isNaN(value) ? 0 : Math.floor(value);
         } catch (e) {
@@ -149,32 +276,128 @@
         }
     };
 
-    // 2.2 基础伤害模拟 (含属性/防御)
+    // 2.2 基础伤害估算
     Game_Actor.prototype.secEstimateBaseDamage = function(skill, target) {
         if (!skill.damage || skill.damage.type === 0) return 0;
-        // 简化的伤害计算
-        const a = this;
-        const b = target;
-        const v = $gameVariables._data;
-        let value = 0;
-        try {
-            value = Math.max(eval(skill.damage.formula), 0);
-        } catch (e) { return 0; }
-
-        value *= target.elementRate(skill.damage.elementId);
-        if (skill.damage.type === 1) value *= target.pdr; 
-        if (skill.damage.type === 2) value *= target.mdr; 
         
+        const baseVal = this.secEvalFormula(skill.damage.formula, { a: this, b: target });
+        let value = Math.abs(baseVal); 
+        
+        if ([1, 2, 5, 6].includes(skill.damage.type)) {
+            value *= target.elementRate(skill.damage.elementId);
+            if (skill.damage.type === 1) value *= target.pdr; 
+            if (skill.damage.type === 2) value *= target.mdr; 
+            if (target.isGuard()) value *= 0.5;
+        }
+        if ([3, 4].includes(skill.damage.type)) {
+            value *= target.rec; 
+        }
+
         return Math.floor(value);
     };
 
-    // 2.3 获取守护光环ID
+    // 2.3 通用治疗评分计算 (Score Calculator) [v19.0 Refactor]
+    // 统一了标准回血和交互回血的评分标准
+    Game_Actor.prototype.secGetHealScore = function(target, healAmount) {
+        if (healAmount <= 0) return 0;
+        
+        // 死人
+        if (target.isDead()) {
+            // 这里假设外部已经判断了能否复活
+            return healAmount * Conf.healCritMult * 2;
+        }
+
+        const rate = target.hpRate();
+        let score = 0;
+
+        // 满血溢出：扣分
+        if (rate >= 1.0) {
+            score -= 500; 
+        } 
+        // 濒死：极高分
+        else if (rate < Conf.hpCrisis) {
+            score += healAmount * Conf.healCritMult;
+        } 
+        // 受伤：正常分
+        else if (rate < Conf.hpHeal) {
+            score += healAmount * Conf.healNormMult;
+        } 
+        // 安全区：微量负分 (鼓励输出)
+        else {
+            score -= 50;
+        }
+        return score;
+    };
+
+    // 2.3.1 技能真实治疗量模拟
+    Game_Actor.prototype.secCalcTotalHeal = function(skill, primaryTarget) {
+        if (![3, 4].includes(skill.damage.type)) return 0;
+
+        let totalScore = 0;
+        let targets = [];
+
+        if ([8, 10].includes(skill.scope)) { 
+            targets = (skill.scope === 10) ? this.friendsUnit().deadMembers() : this.friendsUnit().aliveMembers();
+        } else if (primaryTarget) { 
+            targets = [primaryTarget];
+        }
+
+        for (const t of targets) {
+            const healAmount = this.secEstimateBaseDamage(skill, t);
+            totalScore += this.secGetHealScore(t, healAmount);
+        }
+        return totalScore;
+    };
+
+    // 2.4 铺垫价值检查 (Anti-Dup)
+    Game_Actor.prototype.secCheckSetupValue = function(skill) {
+        let setupScore = 0;
+        
+        const addedStates = [];
+        skill.effects.forEach(e => {
+            if (e.code === 21) addedStates.push(e.dataId);
+        });
+        if (addedStates.length === 0) return 0;
+
+        let validTargetsCount = 0;
+        const scope = skill.scope;
+        if ([8, 10].includes(scope)) {
+            this.friendsUnit().members().forEach(m => {
+                if (m.isAlive() && !addedStates.some(id => m.isStateAffected(id))) validTargetsCount++;
+            });
+        } else {
+            const friends = this.friendsUnit().aliveMembers();
+            if (friends.some(m => !addedStates.some(id => m.isStateAffected(id)))) validTargetsCount = 1;
+        }
+
+        if (validTargetsCount === 0) return -5000;
+
+        const checkSkills = [this.attackSkillId(), ...this._skills].filter(id => id !== skill.id);
+        const uniqueSkills = [...new Set(checkSkills)];
+
+        for (const sId of uniqueSkills) {
+            const s = $dataSkills[sId];
+            if (!s) continue;
+            const note = s.note;
+            for (const stateId of addedStates) {
+                const regex = new RegExp(`<状态交互[:：]\\s*${stateId}\\s*[,，]`, "i");
+                if (note.match(regex)) {
+                    setupScore += Conf.wSetup;
+                    if (sId === this.attackSkillId() && note.includes("allallies")) {
+                        setupScore += Conf.wComboSpecial; 
+                    }
+                }
+            }
+        }
+        return setupScore;
+    };
+
+    // 2.5 辅助: 光环ID
     Game_Actor.prototype.secGetGuardianStates = function() {
         const notes = [];
         if (this.actor()) notes.push(this.actor().note);
         if (this.currentClass()) notes.push(this.currentClass().note);
         this.equips().forEach(item => { if (item) notes.push(item.note); });
-        
         const stateIds = [];
         const regex = /<守护光环[:：]\s*(\d+)/g;
         for (const note of notes) {
@@ -184,27 +407,36 @@
         return stateIds;
     };
 
-    // 2.4 计算溅射总伤 (Splash Simulation)
+    // [v17.0 Update] 绝对禁忌检查
+    Game_Actor.prototype.secCheckHardBan = function(skill) {
+        const note = skill.note || "";
+        const chargeMatch = note.match(/<受击蓄力[:：]\s*(\d+)/);
+        if (chargeMatch) {
+            const stateId = parseInt(chargeMatch[1]);
+            if (this.isStateAffected(stateId)) return true; 
+        }
+        return false;
+    };
+
+    // ... AOE 模拟 ...
     Game_Actor.prototype.secCalcSplashDamage = function(skill, mainTarget, baseDmg) {
         const note = skill.note;
         const splashMatch = note.match(/<溅射伤害[:：]\s*([^,，]+)\s*[,，]\s*(\d+)/);
         if (!splashMatch) return 0;
-
         const param1 = splashMatch[1].trim(); 
         const range = parseInt(splashMatch[2]);
         let totalSplash = 0;
         const friends = mainTarget.friendsUnit(); 
         const centerIndex = mainTarget.index();
-
-        // 模拟溅射逻辑
         friends.members().forEach(n => {
             if (n !== mainTarget && n.isAlive() && Math.abs(n.index() - centerIndex) <= range) {
                 let splashDmg = 0;
                 if (!isNaN(param1) && !/[ab]\.|v\[/.test(param1) && parseFloat(param1) <= 5.0) {
                     splashDmg = baseDmg * parseFloat(param1);
                 } else {
-                    // 复杂公式估算
-                    splashDmg = this.secEvalDamageFormula(param1, n, baseDmg);
+                    splashDmg = this.secEvalFormula(param1, {
+                        a: this, b: n, origin: mainTarget, d: baseDmg
+                    });
                 }
                 totalSplash += splashDmg;
             }
@@ -212,38 +444,54 @@
         return totalSplash;
     };
 
-    // 2.5 计算协战收益 (Synergy Simulation)
+    Game_Actor.prototype.secCalcRicochetDamage = function(skill, firstTarget, baseDmg) {
+        const note = skill.note;
+        const ricoMatch = note.match(/<弹射伤害[:：]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*(\d+)/);
+        if (!ricoMatch) return 0;
+        const initFormula = ricoMatch[1];
+        const nextFormula = ricoMatch[2];
+        const maxBounces = parseInt(ricoMatch[3]);
+        const allEnemies = this.opponentsUnit().aliveMembers();
+        if (allEnemies.length === 0) return 0;
+        let totalRicoDmg = 0;
+        let lastDamage = baseDmg; 
+        const loops = Math.min(maxBounces, 5); 
+        for (let i = 0; i < loops; i++) {
+            const targetSample = allEnemies[i % allEnemies.length];
+            const formulaToUse = (i === 0) ? initFormula : nextFormula;
+            const currentDmg = this.secEvalFormula(formulaToUse, {
+                a: this, b: targetSample, d: lastDamage
+            });
+            totalRicoDmg += currentDmg;
+            lastDamage = currentDmg;
+            if (lastDamage <= 0) break;
+        }
+        return totalRicoDmg;
+    };
+
     Game_Actor.prototype.secCalcSynergyDamage = function(skill, target) {
         let totalSynergyDmg = 0;
         const friends = this.friendsUnit().aliveMembers();
-        
-        // 判断当前技能类型
         const isAttack = skill.damage.type === 1 || skill.damage.type === 5;
-        const isSupport = skill.damage.type === 0 || skill.damage.type === 3; // 简略判断
-
+        const isSupport = skill.damage.type === 0 || skill.damage.type === 3;
         for (const friend of friends) {
             if (friend === this) continue;
-            const note = friend.actor().note; // 简化：只读Actor备注，需要更全面可读全部
+            const note = friend.actor().note; 
             const matches = note.matchAll(/<队友协战[:：]\s*([^,，]+)\s*[,，]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
-            
             for (const match of matches) {
                 const type = match[1].trim().toLowerCase();
                 const chance = parseInt(match[2]) / 100;
                 const skillId = parseInt(match[3]);
-
-                // 判定触发条件
                 let triggered = false;
                 if (type === 'any') triggered = true;
                 else if (type === 'attack' && isAttack) triggered = true;
                 else if (type === 'support' && isSupport) triggered = true;
-
                 if (triggered) {
-                    // 计算队友该技能的期望伤害
                     const synergySkill = $dataSkills[skillId];
-                    // 假设队友攻击的是同一个目标(或随机)，取期望值
-                    // 简单起见，计算打在 target 身上的伤害
-                    const friendBase = friend.secEstimateBaseDamage(synergySkill, target);
-                    totalSynergyDmg += (friendBase * chance);
+                    if (synergySkill) {
+                        const friendBase = friend.secEstimateBaseDamage(synergySkill, target);
+                        totalSynergyDmg += (friendBase * chance);
+                    }
                 }
             }
         }
@@ -253,7 +501,6 @@
     // ======================================================================
     // 3. AI 决策主循环
     // ======================================================================
-
     Game_Actor.prototype.makeSecAutoActions = function() {
         this.clearActions();
         if (this.canMove()) {
@@ -270,19 +517,13 @@
     Game_Actor.prototype.secMakeAutoBattleAction = function(action) {
         let skills = this.usableSkills();
         skills = skills.filter(item => item.id !== this.guardSkillId());
-
         if (skills.length === 0) { action.setAttack(); return; }
 
-        let bestAction = {
-            skill: null,
-            targetIndex: -1,
-            score: -Infinity
-        };
+        let bestAction = { skill: null, targetIndex: -1, score: -Infinity };
 
-        // 遍历所有技能
         for (const skill of skills) {
-            // 遍历所有可能的敌方目标 (如果是对敌技能)
-            if (skill.scope === 1 || skill.scope === 2 || skill.scope === 3 || skill.scope === 4 || skill.scope === 5 || skill.scope === 6) {
+            // 对敌
+            if ([1, 2, 3, 4, 5, 6].includes(skill.scope)) {
                 const targets = this.opponentsUnit().aliveMembers();
                 for (const target of targets) {
                     const score = this.secCalculateTotalScore(skill, target);
@@ -292,11 +533,11 @@
                         bestAction.score = score;
                     }
                 }
-            } 
-            // 友方/全体目标
-            else {
-                // 对友技能简单处理 (选最需要的队友)
-                const target = this.secFindBestFriendTarget(skill);
+            } else {
+                let target = null;
+                if (skill.scope === 8 || skill.scope === 10) target = this.secFindDeadFriendTarget();
+                else if ([7, 9].includes(skill.scope)) target = this.secFindBestFriendTarget(skill);
+                
                 const score = this.secCalculateTotalScore(skill, target);
                 if (score > bestAction.score) {
                     bestAction.skill = skill;
@@ -316,180 +557,193 @@
         }
     };
 
-    // 辅助：找最佳队友目标
+    Game_Actor.prototype.secFindDeadFriendTarget = function() {
+        const deads = this.friendsUnit().deadMembers();
+        if (deads.length === 0) return null;
+        return deads.sort((a, b) => b.atk - a.atk)[0];
+    };
+
     Game_Actor.prototype.secFindBestFriendTarget = function(skill) {
-        // 简单逻辑：如果是治疗，找血最少的；否则找自己或随机
         if ([3, 4].includes(skill.damage.type)) {
             return this.friendsUnit().aliveMembers().sort((a, b) => a.hpRate() - b.hpRate())[0];
         }
-        return this;
+        return this.friendsUnit().aliveMembers().sort((a, b) => b.atk - a.atk)[0];
     };
 
     // ======================================================================
     // 4. 全局评分函数 (The Brain)
     // ======================================================================
     Game_Actor.prototype.secCalculateTotalScore = function(skill, target) {
+        if (this.secCheckHardBan(skill)) return -999999;
+
         let score = 0;
         const note = skill.note || "";
         const meta = skill.meta || {};
 
-        // ------------------------------------------------------------
-        // A. 基础 & 机制伤害计算 (Damage)
-        // ------------------------------------------------------------
         let baseDmg = 0;
         let mechanicDmg = 0;
 
-        // A1. 基础伤害
+        // A. 基础伤害
         if (target && target.isEnemy()) {
             baseDmg = this.secEstimateBaseDamage(skill, target);
+            score += baseDmg * Conf.wDmgMult;
         }
 
-        // A2. 蓄力释放 (Release)
+        // B. 机制伤害
         const releaseMatch = note.match(/<蓄力释放[:：]\s*(\d+)\s*[,，]\s*([^>]+)>/);
         if (releaseMatch) {
             const stateId = parseInt(releaseMatch[1]);
             const formula = releaseMatch[2];
             if (this.isStateAffected(stateId) && this._secStoredDmg > 0) {
                 const safeFormula = formula.replace(/\bd\b/g, String(this._secStoredDmg));
-                mechanicDmg += this.secEvalDamageFormula(safeFormula, target, baseDmg);
+                mechanicDmg += this.secEvalFormula(safeFormula, { a: this, b: target, d: this._secStoredDmg });
+                score += Conf.wRelease; 
             } else {
-                return -500; // 没蓄力别放
+                return -999999;
             }
         }
 
-        // A3. 斩杀追击 (Exec)
         const execMatch = note.match(/<斩杀追击[:：]\s*(\d+)\s*[,，]\s*([^>]+)>/);
         if (execMatch) {
             const formula = execMatch[2];
-            // 计算追击伤害
-            mechanicDmg += this.secEvalDamageFormula(formula, target, baseDmg);
+            mechanicDmg += this.secEvalFormula(formula, { a: this, b: target, d: baseDmg });
         }
 
-        // A4. 状态交互/力场共鸣 (Interact)
-        const interactMatches = note.matchAll(/<(?:状态交互|力场共鸣)[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)/g);
-        for (const match of interactMatches) {
+        const interactRegex = /<状态交互[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^>]+)>/g;
+        for (const match of note.matchAll(interactRegex)) {
             const stateId = parseInt(match[1]);
-            //const mode = match[2]; // spread/gather
+            const formula = match[2];
+            const rangeRaw = match[4].trim().toLowerCase();
+
+            let scanList = [];
+            if (rangeRaw.startsWith('allallies')) scanList = this.friendsUnit().aliveMembers();
+            else if (target) scanList = [target];
+
+            for (const t of scanList) {
+                if (t.isStateAffected(stateId)) {
+                    const val = this.secEvalFormula(formula, { a: this, b: t });
+                    if (val > 0 && t.isEnemy()) {
+                        mechanicDmg += val; 
+                        score += Conf.wCombo;
+                    } 
+                    else if (val < 0 && t.isActor()) {
+                        // [v19.0 Update] 交互回血，走正规治疗评分流程
+                        const healAmt = Math.abs(val);
+                        score += this.secGetHealScore(t, healAmt);
+                        score += Conf.wCombo; 
+                    }
+                }
+            }
+        }
+
+        const fieldRegex = /<力场共鸣[:：]\s*(\d+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]\s*([^,，]+)\s*[,，]/g;
+        for (const match of note.matchAll(fieldRegex)) {
+            const stateId = parseInt(match[1]);
+            const mode = match[2].trim().toLowerCase();
             const formula = match[3];
             
-            // 如果是 Spread/Gather，逻辑稍有不同，这里简化为通用 Interact 伤害
-            // 只要目标有状态，就计算额外伤害
-            if (target && target.isStateAffected(stateId)) {
-                mechanicDmg += this.secEvalDamageFormula(formula, target, baseDmg);
+            const allBattlers = this.friendsUnit().aliveMembers().concat(this.opponentsUnit().aliveMembers());
+            let infectedEnemies = 0;
+            const totalEnemies = this.opponentsUnit().aliveMembers().length;
+
+            for (const m of allBattlers) {
+                if (m.isStateAffected(stateId)) {
+                    if (m.isEnemy()) infectedEnemies++;
+                    const val = this.secEvalFormula(formula, { a: this, b: m });
+                    
+                    if (val > 0 && m.isEnemy()) mechanicDmg += val;
+                    else if (val < 0 && m.isActor()) {
+                        const healAmt = Math.abs(val);
+                        score += this.secGetHealScore(m, healAmt);
+                    }
+                }
+            }
+
+            if (mode === 'spread') {
+                if (infectedEnemies < totalEnemies * 0.6) score += Conf.wSpread; 
+            } else if (mode === 'gather') {
+                if (infectedEnemies >= totalEnemies * 0.5) score += 1000;
             }
         }
 
-        // A5. 溅射/弹射总伤 (AOE)
-        let aoeDmg = 0;
         if (target && target.isEnemy()) {
-            aoeDmg += this.secCalcSplashDamage(skill, target, baseDmg);
-            // 弹射比较难算，这里简化：如果有弹射，给一个预估值 (比如 Base * 2)
-            if (note.match(/<弹射伤害[:：]/)) aoeDmg += baseDmg * 1.5; 
+            mechanicDmg += this.secCalcSplashDamage(skill, target, baseDmg);
+            mechanicDmg += this.secCalcRicochetDamage(skill, target, baseDmg);
+            mechanicDmg += this.secCalcSynergyDamage(skill, target);
         }
 
-        // A6. 协战收益 (Synergy)
-        let synergyDmg = 0;
-        if (target && target.isEnemy()) {
-            synergyDmg = this.secCalcSynergyDamage(skill, target);
-        }
+        score += mechanicDmg * Conf.wDmgMult;
 
-        // --- 伤害汇总 ---
-        const totalEstimatedDamage = baseDmg + mechanicDmg + aoeDmg + synergyDmg;
-        score += totalEstimatedDamage; // 1伤害 = 1分 (简单直接)
-
-        // ** 斩杀检测 **
         if (target && target.isEnemy()) {
-            // 如果单体总伤 (Base + Mechanic) 足以斩杀，不需要管 AOE 和 协战
-            const burstDmg = baseDmg + mechanicDmg; 
+            const burstDmg = baseDmg + mechanicDmg;
             if (burstDmg >= target.hp) {
-                score += 10000; // 绝对优先斩杀
+                score += Conf.wLethal; 
             }
         }
 
-        // ------------------------------------------------------------
-        // B. 战术修正 (Tactical)
-        // ------------------------------------------------------------
+        // C. 真实治疗计算
+        const healScore = this.secCalcTotalHeal(skill, target);
+        score += healScore;
 
-        // B1. 蓄力保护 (Anti-Waste)
-        const chargeMatch = note.match(/<受击蓄力[:：]\s*(\d+)/);
-        if (chargeMatch) {
-            const stateId = parseInt(chargeMatch[1]);
-            if (this.isStateAffected(stateId)) return -5000; // 严禁重置蓄力
+        if ([3, 4].includes(skill.damage.type)) {
+            const friends = this.friendsUnit().aliveMembers();
+            if (friends.some(m => m.hpRate() < Conf.hpCrisis)) {
+                score += Conf.wHealCrisis; 
+            }
         }
 
-        // B2. 守护光环 (Guardian)
+        // [v19.0 Update] 资源消耗惩罚
+        const costPenalty = (skill.mpCost * Conf.wMP) + (skill.tpCost * Conf.wTP);
+        score -= costPenalty;
+
+        // D. 战术修正
+        score += this.secCheckSetupValue(skill, target);
+
+        // 光环: 没开加分, 已开不扣分
         const guardianStates = this.secGetGuardianStates();
         if (guardianStates.length > 0) {
             const effect = skill.effects.find(e => e.code === 21 && guardianStates.includes(e.dataId));
-            if (effect) {
-                if (this.isStateAffected(effect.dataId)) return -5000; // 已开，勿重
-                else score += Conf.wGuardian; // 必开
+            if (effect && !this.isStateAffected(effect.dataId)) {
+                score += Conf.wGuardian; 
             }
         }
 
-        // B3. Buff 防重 (Support Anti-Dup)
         const aiType = (meta.AI_Type || "").toLowerCase();
-        if (aiType === 'support' || skill.scope === 0) { // Buff类
-            // 检查技能是否施加状态
+        if (aiType === 'support' || skill.scope === 0) {
+            let validTargetsCount = 0;
             skill.effects.forEach(e => {
                 if (e.code === 21) {
-                    // 如果目标已经有该Buff，大幅扣分
-                    if (target && target.isStateAffected(e.dataId)) score -= 3000;
-                    else score += 1000; // 有效Buff加分
+                    const buffId = e.dataId;
+                    if ([8, 10].includes(skill.scope)) { 
+                         this.friendsUnit().members().forEach(m => {
+                             if (m.isAlive() && !m.isStateAffected(buffId)) validTargetsCount++;
+                         });
+                    } 
+                    else if (target) {
+                        if (!target.isStateAffected(buffId)) validTargetsCount++;
+                    }
                 }
             });
+            if (validTargetsCount === 0) score -= 5000;
+            else score += validTargetsCount * Conf.wBuffPerUnit;
         }
 
-        // B4. 状态运营 (Cycle)
         const cycleMatch = note.match(/<状态循环[:：]\s*([^>]+)>/);
         if (cycleMatch && target) {
             const stateIds = cycleMatch[1].split(/[,，]/).map(Number);
             const currentIndex = stateIds.findIndex(id => target.isStateAffected(id));
-            
-            // 情况1: 还没满层 -> 鼓励叠层
-            if (currentIndex < stateIds.length - 1) {
-                score += Conf.wCycle; 
-            }
-            // 情况2: 已经满层 -> 叠层无意义，扣分 (除非它伤害特别高)
-            else {
-                score -= 1000; 
-            }
+            if (currentIndex < stateIds.length - 1) score += Conf.wCycle; 
+            else if ((baseDmg + mechanicDmg) < 100) score -= 1000;
         }
 
-        // B5. 力场共鸣 (Spread vs Gather)
-        const fieldMatch = note.match(/<力场共鸣[:：]\s*(\d+)\s*[,，]\s*([^,，]+)/);
-        if (fieldMatch && target) {
-            const stateId = parseInt(fieldMatch[1]);
-            const mode = fieldMatch[2].trim().toLowerCase(); // spread / gather
-            const enemies = this.opponentsUnit().aliveMembers();
-            const infectedCount = enemies.filter(e => e.isStateAffected(stateId)).length;
-            const totalCount = enemies.length;
-
-            if (mode === 'spread') {
-                // 感染率低时，Spread 价值高
-                if (infectedCount < totalCount * 0.6) score += Conf.wSpread;
-            } else if (mode === 'gather') {
-                // 感染率高时，Gather 价值高 (伤害在上面A4已经算过了，这里给战术分)
-                if (infectedCount >= totalCount * 0.5) score += 1000;
-            }
-        }
-
-        // B6. 治疗 (Heal)
-        if (aiType === 'heal' || [3, 4].includes(skill.damage.type)) {
-            if (target && target.isActor()) {
-                if (target.hpRate() < Conf.hpCrisis) score += Conf.wHealCrisis;
-                else if (target.hpRate() < Conf.hpHeal) score += Conf.wHealNormal;
-                else score -= 5000; // 满血别奶
-            }
-        }
-
-        // B7. 控制 (Push/Pull)
         if (note.match(/<(推条|拉条)[:：]/)) score += Conf.wControl;
+        if (meta.AI_Priority) score += Number(meta.AI_Priority);
+        if (note.match(/<(溅射|弹射)伤害[:：]/)) score += Conf.wAOE;
 
         return score;
     };
 
-    // 视图层保持不变 (Sprite_AutoButton)
+    // 视图层
     class Sprite_AutoButton extends Sprite_Clickable {
         initialize() {
             super.initialize();
