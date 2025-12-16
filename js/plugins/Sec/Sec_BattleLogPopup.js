@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 战报记录弹窗 & 自动染色 (v1.5 全功能版)
+ * @plugindesc [战斗] 战报记录弹窗 & 自动染色 (v1.6 动画增强版)
  * @author AI Architect
  * @orderAfter Sec_BattleSpeedButton
  * @orderAfter Sec_BattleVisuals
@@ -10,14 +10,14 @@
  * 这是一个独立的战报记录系统。
  * 点击按钮弹出一个可滑动的窗口显示历史战斗信息。
  *
- * 【自动染色说明】
- * 插件会接管系统的日志生成，并自动为名字、技能、状态、数字添加颜色代码。
- * 您可以在下方参数中修改具体的颜色 ID。
- * (颜色 ID 参考：0=白 2=红 3=绿 4=蓝 6=米黄 14=黄 23=紫)
+ * 【更新说明 v1.6】
+ * 1. 更新了默认按钮位置和窗口尺寸。
+ * 2. 新增丝滑开关动画：
+ * - 打开：先展开高度，再淡入文字。
+ * - 关闭：直接收缩高度。
  *
- * 【状态名染色】
- * 对于“状态附加/移除”的消息，插件会尝试在文本中搜索“状态名称”并染色。
- * 比如消息是 "%1 陷入了中毒！"，且状态名为"中毒"，则"中毒"会被染色。
+ * 【自动染色】
+ * 插件会自动识别角色名、技能名、状态名、数值并上色。
  * ============================================================================
  *
  * @param ---Button Settings---
@@ -28,13 +28,13 @@
  * @parent ---Button Settings---
  * @text 按钮 X 坐标
  * @type number
- * @default 680
+ * @default 26
  *
  * @param ButtonY
  * @parent ---Button Settings---
  * @text 按钮 Y 坐标
  * @type number
- * @default 120
+ * @default 255
  *
  * @param ButtonSize
  * @parent ---Button Settings---
@@ -50,27 +50,27 @@
  * @parent ---Popup Settings---
  * @text 弹窗宽度
  * @type number
- * @default 600
+ * @default 390
  *
  * @param WindowHeight
  * @parent ---Popup Settings---
  * @text 弹窗高度
  * @type number
- * @default 800
+ * @default 405
  *
  * @param PopupOffsetX
  * @parent ---Popup Settings---
  * @text 弹窗中心 X 偏移
  * @type number
  * @min -9999
- * @default 0
+ * @default 5
  *
  * @param PopupOffsetY
  * @parent ---Popup Settings---
  * @text 弹窗中心 Y 偏移
  * @type number
  * @min -9999
- * @default 0
+ * @default 15
  *
  * @param ---Content Settings---
  * @text [内容设置]
@@ -119,7 +119,6 @@
  * @param ColorNumber
  * @parent ---Color Settings---
  * @text 数值颜色
- * @desc 伤害、治疗等数字的颜色。
  * @type number
  * @default 2
  *
@@ -132,16 +131,15 @@
     const parameters = PluginManager.parameters(pluginName);
     
     const Conf = {
-        btnX: Number(parameters['ButtonX'] || 680),
-        btnY: Number(parameters['ButtonY'] || 120),
+        btnX: Number(parameters['ButtonX'] || 26),
+        btnY: Number(parameters['ButtonY'] || 255),
         btnSize: Number(parameters['ButtonSize'] || 32),
-        winW: Number(parameters['WindowWidth'] || 600),
-        winH: Number(parameters['WindowHeight'] || 800),
-        offX: Number(parameters['PopupOffsetX'] || 0),
-        offY: Number(parameters['PopupOffsetY'] || 0),
+        winW: Number(parameters['WindowWidth'] || 390),
+        winH: Number(parameters['WindowHeight'] || 405),
+        offX: Number(parameters['PopupOffsetX'] || 5),
+        offY: Number(parameters['PopupOffsetY'] || 15),
         fontSize: Number(parameters['FontSize'] || 20),
         maxLines: Number(parameters['MaxLogLines'] || 100),
-        // 颜色配置
         cActor: Number(parameters['ColorActor'] || 4),
         cEnemy: Number(parameters['ColorEnemy'] || 2),
         cSkill: Number(parameters['ColorSkill'] || 14),
@@ -174,27 +172,23 @@
     };
 
     // ======================================================================
-    // 2. 染色逻辑：核心重写
+    // 2. 染色逻辑
     // ======================================================================
 
-    // 辅助：名字染色
     Window_BattleLog.prototype.secColorName = function(battler) {
         const name = battler.name();
         const color = battler.isActor() ? Conf.cActor : Conf.cEnemy;
         return `\\C[${color}]${name}\\C[0]`;
     };
 
-    // 辅助：技能/道具染色
     Window_BattleLog.prototype.secColorItem = function(item) {
         return `\\C[${Conf.cSkill}]${item.name}\\C[0]`;
     };
 
-    // 辅助：数值染色
     Window_BattleLog.prototype.secColorNum = function(num) {
         return `\\C[${Conf.cNum}]${Math.abs(num)}\\C[0]`;
     };
 
-    // [重写] 释放技能/道具
     Window_BattleLog.prototype.displayItemMessage = function(fmt, subject, item) {
         if (fmt) {
             const name1 = this.secColorName(subject);
@@ -203,13 +197,12 @@
         }
     };
 
-    // [重写] HP伤害文本
     Window_BattleLog.prototype.makeHpDamageText = function(target) {
         const result = target.result();
         const damage = result.hpDamage;
         const isActor = target.isActor();
         const targetName = this.secColorName(target);
-        const damageText = this.secColorNum(damage); // 染色数字
+        const damageText = this.secColorNum(damage);
         let fmt;
         if (damage > 0 && result.drain) {
             fmt = isActor ? TextManager.actorDrain : TextManager.enemyDrain;
@@ -226,7 +219,6 @@
         }
     };
 
-    // [重写] MP伤害文本
     Window_BattleLog.prototype.makeMpDamageText = function(target) {
         const result = target.result();
         const damage = result.mpDamage;
@@ -248,7 +240,6 @@
         }
     };
 
-    // [重写] TP伤害文本
     Window_BattleLog.prototype.makeTpDamageText = function(target) {
         const result = target.result();
         const damage = result.tpDamage;
@@ -267,7 +258,6 @@
         }
     };
 
-    // [重写] 状态添加
     Window_BattleLog.prototype.displayAddedStates = function(target) {
         const result = target.result();
         const states = result.addedStateObjects();
@@ -280,7 +270,6 @@
             if (stateText) {
                 this.push("popBaseLine");
                 this.push("pushBaseLine");
-                // 尝试智能替换状态名
                 let text = stateText;
                 if (state.name) {
                     const coloredState = `\\C[${Conf.cState}]${state.name}\\C[0]`;
@@ -292,7 +281,6 @@
         }
     };
 
-    // [重写] 状态移除
     Window_BattleLog.prototype.displayRemovedStates = function(target) {
         const result = target.result();
         const states = result.removedStateObjects();
@@ -311,7 +299,6 @@
         }
     };
 
-    // [重写] 闪避/失败等
     Window_BattleLog.prototype.displayMiss = function(target) {
         let fmt;
         if (target.result().physical) {
@@ -343,19 +330,25 @@
     };
 
     // ======================================================================
-    // 3. 视图层：Window_BattleHistory (物理滚动修复版)
+    // 3. 视图层：Window_BattleHistory (动画优化版)
     // ======================================================================
     
     class Window_BattleHistory extends Window_Scrollable {
         initialize(rect) {
             super.initialize(rect);
             this._data = [];
-            this.hide();
+            this.openness = 0; // 初始关闭
+            this.visible = false;
+            this.contentsOpacity = 0; 
             this.setBackgroundType(0);
             this.backOpacity = 240;
+            
+            // 动画状态标记
+            this._customOpening = false;
+            this._customClosing = false;
+            this._textFadingIn = false;
         }
 
-        // [核心修复] 物理滚动映射
         updateOrigin() {
             this.origin.y = this.scrollY();
         }
@@ -407,12 +400,72 @@
             }
         }
 
+        // --- 动画逻辑重写 ---
+
+        // 1. 开始打开：重置状态，刷新内容，可见
         show() {
             this.refresh();
-            super.show();
             this.scrollToBottom();
+            this.visible = true;
             this.activate();
+            
+            // 启动开窗动画
+            this._customOpening = true;
+            this._customClosing = false;
+            this._textFadingIn = false;
+            this.openness = 0;
+            this.contentsOpacity = 0;
         }
+
+        // 2. 开始关闭
+        hide() {
+            this.deactivate();
+            this._customOpening = false;
+            this._textFadingIn = false;
+            this._customClosing = true;
+        }
+
+        // 3. 动画帧更新
+        update() {
+            super.update(); // 处理滚动物理
+
+            if (this.visible) {
+                if (this._customOpening) {
+                    // A. 窗口高度展开 (0->255)
+                    this.openness += 32; // 展开速度
+                    this.contentsOpacity = 0; // 此时文字不可见
+                    if (this.openness >= 255) {
+                        this.openness = 255;
+                        this._customOpening = false;
+                        this._textFadingIn = true; // 进入文字淡入阶段
+                    }
+                } 
+                else if (this._textFadingIn) {
+                    // B. 文字内容淡入
+                    this.contentsOpacity += 24; // 淡入速度
+                    if (this.contentsOpacity >= 255) {
+                        this.contentsOpacity = 255;
+                        this._textFadingIn = false;
+                    }
+                } 
+                else if (this._customClosing) {
+                    // C. 窗口高度收缩 (255->0)
+                    this.openness -= 32; // 收缩速度
+                    // 文字跟随窗口一起消失(被裁切或透明度)
+                    // 这里让透明度保持当前值(255)或者随窗口变小自然不可见均可
+                    // 为了丝滑，我们不额外动 contentsOpacity，只动 openness
+                    if (this.openness <= 0) {
+                        this.openness = 0;
+                        this._customClosing = false;
+                        this.visible = false; // 彻底隐藏
+                    }
+                }
+            }
+        }
+        
+        // 屏蔽原生 open/close 方法干扰，完全由 show/hide 和 update 控制
+        open() {}
+        close() {}
     }
 
     // ======================================================================
@@ -508,6 +561,9 @@
     };
 
     Scene_Battle.prototype.toggleHistoryWindow = function() {
+        // 如果正在播放关闭动画，不允许重新打开，防止状态错乱
+        if (this._historyWindow._customClosing) return;
+
         if (this._historyWindow.visible) {
             this._historyWindow.hide();
             this._logButton.opacity = 255;
@@ -532,6 +588,7 @@
                               Math.abs(y - this._logButton.y) < (Conf.btnSize/2 + 20);
 
                 if (!inWin && !inBtn) {
+                    // 点击空白处关闭
                     this._historyWindow.hide();
                     this._logButton.opacity = 255;
                     SoundManager.playCancel();
