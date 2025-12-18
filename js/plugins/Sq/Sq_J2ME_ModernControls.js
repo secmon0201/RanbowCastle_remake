@@ -887,5 +887,72 @@
         if (isTouchingBtn) return;
         _Scene_Map_processMapTouch.call(this);
     };
+// =========================================================================
+    // [扩展功能] J2ME 风格状态页优化：隐藏翻页键 + 左右键切换 + 滑动切换
+    // =========================================================================
 
+    // 1. 彻底禁止系统自带的翻页按钮 (Page Buttons) 生成
+    // -------------------------------------------------------------------------
+    const _Scene_MenuBase_createPageButtons = Scene_MenuBase.prototype.createPageButtons;
+    Scene_MenuBase.prototype.createPageButtons = function() {
+        if (pDisableDefaultUI) {
+            // 如果开启了隐藏UI，直接不创建这两个按钮
+            return;
+        }
+        _Scene_MenuBase_createPageButtons.call(this);
+    };
+
+    // 2. 为菜单基类添加滑动检测和按键映射逻辑
+    // -------------------------------------------------------------------------
+    const _Scene_MenuBase_update = Scene_MenuBase.prototype.update;
+    Scene_MenuBase.prototype.update = function() {
+        _Scene_MenuBase_update.call(this);
+        // 只有在允许切换角色的界面（如状态、技能、装备）才启用
+        if (this.needsPageButtons()) { 
+            this.updateJ2MESwipe();
+            this.updateJ2MEButtonMap();
+        }
+    };
+
+    // --- 处理触摸滑动 (Swipe) ---
+    Scene_MenuBase.prototype.updateJ2MESwipe = function() {
+        if (TouchInput.isTriggered()) {
+            this._j2meTouchStartX = TouchInput.x;
+            this._j2meTouchStartY = TouchInput.y;
+        }
+        
+        if (TouchInput.isReleased() && this._j2meTouchStartX !== undefined) {
+            const deltaX = TouchInput.x - this._j2meTouchStartX;
+            const deltaY = TouchInput.y - this._j2meTouchStartY;
+            const threshold = 60; // 滑动触发阈值(像素)
+            
+            // 确保是水平滑动（X轴移动距离远大于Y轴）
+            if (Math.abs(deltaX) >= threshold && Math.abs(deltaY) < 100) {
+                if (deltaX > 0) {
+                    // 向右滑 -> 上一个角色
+                    this.previousActor();
+                    SoundManager.playCursor();
+                } else {
+                    // 向左滑 -> 下一个角色
+                    this.nextActor();
+                    SoundManager.playCursor();
+                }
+            }
+            this._j2meTouchStartX = undefined;
+        }
+    };
+
+    // --- 处理虚拟按键映射 (仅在状态界面) ---
+    Scene_MenuBase.prototype.updateJ2MEButtonMap = function() {
+        // 为了防止与技能/装备界面的光标移动冲突，我们只在“状态界面”强制绑定左右键
+        if (this instanceof Scene_Status) {
+            if (Input.isTriggered('right')) {
+                this.nextActor();
+                SoundManager.playCursor();
+            } else if (Input.isTriggered('left')) {
+                this.previousActor();
+                SoundManager.playCursor();
+            }
+        }
+    };
 })();

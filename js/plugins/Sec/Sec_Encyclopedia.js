@@ -199,7 +199,7 @@
     
     class Window_EncyclopediaBase extends Window_Selectable {
         loadWindowskin() {
-            this.windowskin = ImageManager.loadSystem("BattleWindow");
+            this.windowskin = ImageManager.loadSystem("Battlewindow");
         }
         resetTextColor() {
             this.changeTextColor(ColorManager.normalColor());
