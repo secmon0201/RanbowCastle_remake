@@ -30,5 +30,6 @@ var $plugins =
 {"name":"Sec/Sec_Encyclopedia","status":false,"description":"[系统] 综合图鉴 Plus - 自动记录入队角色 & Menu背景","parameters":{"menuCommandName":"图鉴"}},
 {"name":"Sq/Sq_AutoNotify","status":true,"description":"[系统] 自动获取物品提示 & 手动弹窗指令 & 独立开关音效","parameters":{"defaultDuration":"90","fontSize":"24","--- Open Sound ---":"","enableOpenSound":"true","openSound":"{\"name\":\"Item3\",\"volume\":\"90\",\"pitch\":\"100\",\"pan\":\"0\"}","--- Close Sound ---":"","enableCloseSound":"true","closeSound":"{\"name\":\"Cancel1\",\"volume\":\"90\",\"pitch\":\"100\",\"pan\":\"0\"}"}},
 {"name":"Sq/Sq_liveBoss","status":true,"description":"[地图] 事件显示敌人立绘 & 动态呼吸效果 & 镜像翻转","parameters":{}},
-{"name":"Sq/Sq_Dev_BattlePoser","status":true,"description":"[开发] 战斗位置可视化编辑器 & 防误触拖拽 & 一键居中","parameters":{}}
+{"name":"Sq/Sq_Dev_BattlePoser","status":true,"description":"[开发] 战斗位置可视化编辑器 & 防误触拖拽 & 一键居中","parameters":{}},
+{"name":"Sq/Sq_FullResourceLoader","status":true,"description":"[V7.0 终极性能版] 优先级队列 + 预解码 + 智能并发 + 指数重试","parameters":{"DevMode":"true","BarColor":"#00ff00"}}
 ];
