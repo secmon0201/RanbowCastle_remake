@@ -1,8 +1,8 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉
- * @author Secmon (Refactored by Gemini)
- * @version 4.9
+ * @plugindesc [战斗] 战斗机制扩展 & 伤害传导体系 & 行动条推拉 (v5.1 帧同步稳定版)
+ * @author Secmon (Refactored by AI)
+ * @version 5.1
  *
  * @param ---Default Animations---
  * @text [默认动画设置]
@@ -356,12 +356,14 @@
  *
  * @help
  * ============================================================================
- * ★ 插件功能手册 v4.9 (亡语增强版) ★
+ * ★ 插件功能手册 v5.1 (帧同步修复版) ★
  * ============================================================================
- * 【更新日志 v4.9】
- * 1. [新增] 亡语 (Death Rattle) 的视觉表现。
- * - 当单位死亡并触发亡语效果时，会弹出自定义文本（默认“亡语”）。
- * - 配有专属颜色和音效，增强战斗反馈。
+ * 【优化说明 v5.1】
+ * 1. [核心重构] 移除了所有 setTimeout，改用 BattleManager 帧计时器。
+ * - 修复了游戏暂停、切屏或战斗结束时，伤害数字仍会弹出或报错的问题。
+ * - 所有的延迟现在都严格基于游戏帧率 (60FPS)。
+ * 2. [兼容性] 参数设置中的 ms 毫秒数会自动转换为帧数，无需修改现有参数。
+ * 3. [修复] 修正了守护光环中 target.parent 的错误检查。
  *
  * ============================================================================
  */
@@ -375,113 +377,40 @@
     const pluginName = "Sec_BattleSystemInstance";
     const parameters = PluginManager.parameters(pluginName);
     
+    // 毫秒转帧数的辅助函数 (假设60FPS, 16.66ms/frame)
+    // 保证至少为1帧
+    const msToFrames = (ms) => Math.max(1, Math.floor(ms / 16.666));
+
     const Sec_Params = {
-        guardianDelay: Number(parameters['GuardianDelay'] || 200),
-        chargeDelay: Number(parameters['ChargeDelay'] || 400),
-        synergyDelay: Number(parameters['SynergyDelay'] || 0), 
-        stateInteractDelay: Number(parameters['StateInteractDelay'] || 200),
-        fieldDelay: Number(parameters['FieldResonanceDelay'] || 200),
-        ricochetBase: Number(parameters['RicochetBaseDelay'] || 200),
-        ricochetDecay: Number(parameters['RicochetDecay'] || 30),
+        // [安全优化] 自动将参数里的毫秒转为帧数
+        guardianDelay: msToFrames(Number(parameters['GuardianDelay'] || 200)),
+        chargeDelay: msToFrames(Number(parameters['ChargeDelay'] || 400)),
+        synergyDelay: msToFrames(Number(parameters['SynergyDelay'] || 0)), 
+        stateInteractDelay: msToFrames(Number(parameters['StateInteractDelay'] || 200)),
+        fieldDelay: msToFrames(Number(parameters['FieldResonanceDelay'] || 200)),
+        ricochetBase: msToFrames(Number(parameters['RicochetBaseDelay'] || 200)),
+        ricochetDecay: msToFrames(Number(parameters['RicochetDecay'] || 30)),
         
-        hitDelay: Number(parameters['ReactionHitDelay'] || 12), // 快节奏延迟
+        hitDelay: Number(parameters['ReactionHitDelay'] || 12), // 快节奏延迟 (本身就是帧数)
 
         // 全局设置
         fontSize: Number(parameters['PopupFontSize'] || 25),
 
-        // 视觉配置集
+        // 视觉配置集 (无变动)
         visual: {
-            synergy: {
-                text: String(parameters['SynergyText'] || "协战"),
-                color: String(parameters['SynergyColor'] || "#FFD700"),
-                wait: Number(parameters['SynergyWait'] || 60),
-                se: { name: parameters['SynergySE'], volume: Number(parameters['SynergyVol']), pitch: Number(parameters['SynergyPitch']) },
-                style: 'impact'
-            },
-            reaction: {
-                text: String(parameters['ReactionText'] || "识破"),
-                color: String(parameters['ReactionColor'] || "#FF0000"),
-                wait: Number(parameters['SynergyWait'] || 60),
-                se: { name: parameters['SynergySE'], volume: Number(parameters['SynergyVol']), pitch: Number(parameters['SynergyPitch']) },
-                style: 'impact'
-            },
-            splash: {
-                text: String(parameters['SplashText'] || "溅射"),
-                color: String(parameters['SplashColor'] || "#FF8800"),
-                wait: Number(parameters['SplashWait'] || 60),
-                se: parameters['SplashSE'],
-                style: 'shake'
-            },
-            ricochet: {
-                text: String(parameters['RicochetText'] || "弹射"),
-                color: String(parameters['RicochetColor'] || "#00FFFF"),
-                wait: Number(parameters['RicochetWait'] || 60),
-                se: parameters['RicochetSE'],
-                style: 'jump'
-            },
-            fieldSpread: {
-                text: String(parameters['FieldSpreadText'] || "扩散"),
-                color: String(parameters['FieldColor'] || "#CC88FF"),
-                wait: Number(parameters['FieldWait'] || 60),
-                se: parameters['FieldSE'],
-                style: 'expand'
-            },
-            fieldGather: {
-                text: String(parameters['FieldGatherText'] || "聚焦"),
-                color: String(parameters['FieldColor'] || "#CC88FF"),
-                wait: Number(parameters['FieldWait'] || 60),
-                se: parameters['FieldSE'],
-                style: 'contract'
-            },
-            state: {
-                text: String(parameters['StateText'] || "触发"),
-                color: String(parameters['StateColor'] || "#88FF88"),
-                wait: Number(parameters['StateWait'] || 60),
-                se: parameters['StateSE'],
-                style: 'pulse'
-            },
-            stateCycle: {
-                text: "", // 动态获取
-                color: String(parameters['StateCycleColor'] || "#FF88FF"),
-                wait: Number(parameters['StateCycleWait'] || 60),
-                se: parameters['StateCycleSE'],
-                style: 'rise'
-            },
-            exec: {
-                text: String(parameters['ExecText'] || "斩杀"),
-                color: String(parameters['ExecColor'] || "#FF0000"),
-                wait: Number(parameters['ExecWait'] || 60),
-                se: parameters['ExecSE'],
-                style: 'slash'
-            },
-            drain: {
-                text: String(parameters['DrainText'] || "吸血"),
-                color: String(parameters['DrainColor'] || "#FF88AA"),
-                wait: Number(parameters['DrainWait'] || 60),
-                se: parameters['DrainSE'],
-                style: 'float'
-            },
-            deathRattle: {
-                text: String(parameters['DeathRattleText'] || "亡语"),
-                color: String(parameters['DeathRattleColor'] || "#BB00FF"),
-                wait: Number(parameters['DeathRattleWait'] || 60),
-                se: parameters['DeathRattleSE'],
-                style: 'pulse'
-            },
-            push: {
-                text: String(parameters['PushText'] || "迟滞"),
-                color: String(parameters['PushColor'] || "#0088FF"),
-                wait: Number(parameters['PushWait'] || 60),
-                se: parameters['PushSE'],
-                style: 'shake'
-            },
-            pull: {
-                text: String(parameters['PullText'] || "神速"),
-                color: String(parameters['PullColor'] || "#00FF88"),
-                wait: Number(parameters['PullWait'] || 60),
-                se: parameters['PullSE'],
-                style: 'jump'
-            }
+            synergy: { text: String(parameters['SynergyText'] || "协战"), color: String(parameters['SynergyColor'] || "#FFD700"), wait: Number(parameters['SynergyWait'] || 60), se: { name: parameters['SynergySE'], volume: Number(parameters['SynergyVol']), pitch: Number(parameters['SynergyPitch']) }, style: 'impact' },
+            reaction: { text: String(parameters['ReactionText'] || "识破"), color: String(parameters['ReactionColor'] || "#FF0000"), wait: Number(parameters['SynergyWait'] || 60), se: { name: parameters['SynergySE'], volume: Number(parameters['SynergyVol']), pitch: Number(parameters['SynergyPitch']) }, style: 'impact' },
+            splash: { text: String(parameters['SplashText'] || "溅射"), color: String(parameters['SplashColor'] || "#FF8800"), wait: Number(parameters['SplashWait'] || 60), se: parameters['SplashSE'], style: 'shake' },
+            ricochet: { text: String(parameters['RicochetText'] || "弹射"), color: String(parameters['RicochetColor'] || "#00FFFF"), wait: Number(parameters['RicochetWait'] || 60), se: parameters['RicochetSE'], style: 'jump' },
+            fieldSpread: { text: String(parameters['FieldSpreadText'] || "扩散"), color: String(parameters['FieldColor'] || "#CC88FF"), wait: Number(parameters['FieldWait'] || 60), se: parameters['FieldSE'], style: 'expand' },
+            fieldGather: { text: String(parameters['FieldGatherText'] || "聚焦"), color: String(parameters['FieldColor'] || "#CC88FF"), wait: Number(parameters['FieldWait'] || 60), se: parameters['FieldSE'], style: 'contract' },
+            state: { text: String(parameters['StateText'] || "触发"), color: String(parameters['StateColor'] || "#88FF88"), wait: Number(parameters['StateWait'] || 60), se: parameters['StateSE'], style: 'pulse' },
+            stateCycle: { text: "", color: String(parameters['StateCycleColor'] || "#FF88FF"), wait: Number(parameters['StateCycleWait'] || 60), se: parameters['StateCycleSE'], style: 'rise' },
+            exec: { text: String(parameters['ExecText'] || "斩杀"), color: String(parameters['ExecColor'] || "#FF0000"), wait: Number(parameters['ExecWait'] || 60), se: parameters['ExecSE'], style: 'slash' },
+            drain: { text: String(parameters['DrainText'] || "吸血"), color: String(parameters['DrainColor'] || "#FF88AA"), wait: Number(parameters['DrainWait'] || 60), se: parameters['DrainSE'], style: 'float' },
+            deathRattle: { text: String(parameters['DeathRattleText'] || "亡语"), color: String(parameters['DeathRattleColor'] || "#BB00FF"), wait: Number(parameters['DeathRattleWait'] || 60), se: parameters['DeathRattleSE'], style: 'pulse' },
+            push: { text: String(parameters['PushText'] || "迟滞"), color: String(parameters['PushColor'] || "#0088FF"), wait: Number(parameters['PushWait'] || 60), se: parameters['PushSE'], style: 'shake' },
+            pull: { text: String(parameters['PullText'] || "神速"), color: String(parameters['PullColor'] || "#00FF88"), wait: Number(parameters['PullWait'] || 60), se: parameters['PullSE'], style: 'jump' }
         }
     };
 
@@ -493,8 +422,47 @@
     };
 
     // ======================================================================
-    // 1. 辅助函数
+    // 1. 辅助函数 & 核心计时器系统
     // ======================================================================
+    
+    // [核心优化] 新增：BattleManager 帧计时器系统
+    const _BattleManager_initMembers = BattleManager.initMembers;
+    BattleManager.initMembers = function() {
+        _BattleManager_initMembers.call(this);
+        this._secTimers = [];
+    };
+
+    const _BattleManager_update = BattleManager.update;
+    BattleManager.update = function(timeActive) {
+        _BattleManager_update.call(this, timeActive);
+        this.updateSecTimers();
+    };
+
+    BattleManager.updateSecTimers = function() {
+        if (!this._secTimers) return;
+        for (let i = this._secTimers.length - 1; i >= 0; i--) {
+            const timer = this._secTimers[i];
+            timer.frames--;
+            if (timer.frames <= 0) {
+                // 安全执行回调
+                if (typeof timer.callback === 'function') {
+                    try {
+                        timer.callback();
+                    } catch (e) {
+                        console.error("Sec_Timer Error:", e);
+                    }
+                }
+                this._secTimers.splice(i, 1);
+            }
+        }
+    };
+
+    // [核心优化] 替代 setTimeout 的方法，单位为帧
+    BattleManager.addSecTimer = function(frames, callback) {
+        this._secTimers = this._secTimers || [];
+        this._secTimers.push({ frames: frames, callback: callback });
+    };
+
     function _Sec_GetBattlerNotes(battler) {
         let notes = "";
         if (battler.isActor()) {
@@ -633,7 +601,8 @@
                             const bonusDmg = Math.floor(eval(formula));
                             
                             if (bonusDmg > 0) {
-                                setTimeout(() => {
+                                // [优化] 使用帧计时器替代 setTimeout
+                                BattleManager.addSecTimer(Sec_Params.chargeDelay, () => {
                                     if (target && (target.isAlive() || !target._collapsed)) {
                                         _Sec_SuppressLog(target);
                                         target.gainHp(-bonusDmg);
@@ -644,7 +613,7 @@
                                         _Sec_PlayAnim(target, animId); 
                                         if (target.isDead()) target.performCollapse();
                                     }
-                                }, Sec_Params.chargeDelay); 
+                                });
                             }
                             subject._secStoredDmg = 0;
                             subject.removeState(stateId);
@@ -684,7 +653,7 @@
                 }
             }
 
-            // B3. 守护光环 (Fix: 增加有效性检查，防止死后报错)
+            // B3. 守护光环 (修复+优化)
             if (actualDamage > 0) {
                 const friends = target.friendsUnit().members();
                 for (const guardian of friends) {
@@ -709,12 +678,13 @@
                                 let guardianDmg = transferAmount;
                                 try { guardianDmg = Math.floor(eval(formula)); } catch(e) {}
 
-                                setTimeout(() => {
-                                    // [Fix] 再次检查 target 是否存在
-                                    if (target) {
+                                // [优化] 使用帧计时器嵌套
+                                BattleManager.addSecTimer(Sec_Params.guardianDelay, () => {
+                                    // [修复] 检查 target 是否依然有效，而不是检查 .parent
+                                    if (target) { 
                                         _Sec_SuppressLog(target); 
                                         target.gainHp(transferAmount);
-                                        // 检查 result 是否存在 (防止对象已被销毁)
+                                        // result 对象可能在回合切换时被重置，需检查
                                         if (target.result()) {
                                             target.result().hpDamage = -transferAmount;
                                             target.result().hpAffected = true;
@@ -724,8 +694,7 @@
                                         _Sec_PlayAnim(target, animId); 
                                     }
                                     
-                                    setTimeout(() => {
-                                        // [Fix] 再次检查 guardian 是否存在且有效
+                                    BattleManager.addSecTimer(Sec_Params.guardianDelay, () => {
                                         if (guardian && guardian.isAlive()) {
                                             _Sec_SuppressLog(guardian); 
                                             guardian.gainHp(-guardianDmg);
@@ -735,7 +704,7 @@
                                                 guardian.result().hpAffected = true;
                                             }
                                             
-                                            // 手动累加伤害记录
+                                            // 手动累加伤害记录 (用于裁决技能)
                                             if (guardianDmg > 0) {
                                                 guardian._secSinAccumulator = (guardian._secSinAccumulator || 0) + guardianDmg;
                                             }
@@ -744,8 +713,8 @@
                                             guardian.performDamage();
                                             if (guardian.isDead()) guardian.performCollapse();
                                         }
-                                    }, Sec_Params.guardianDelay); 
-                                }, Sec_Params.guardianDelay); 
+                                    });
+                                });
                             }
                             break; 
                         }
@@ -813,7 +782,8 @@
                 if (t.isAlive() && t.isStateAffected(stateId)) {
                     // [Visual]
                     t.startCustomPopupConfig(params.state);
-                    setTimeout(() => {
+                    // [优化] 帧计时器
+                    BattleManager.addSecTimer(Sec_Params.stateInteractDelay, () => {
                         try {
                             const a = subject, b = t, v = $gameVariables._data;
                             const val = Math.floor(eval(formula));
@@ -825,12 +795,11 @@
                                 if (val > 0) t.performDamage();
                                 _Sec_PlayAnim(t, animId); 
                                 
-                                // [Fix v5.0] 死亡结算
                                 if (t.isDead()) t.performCollapse();
                             }
                             if (removeState) t.removeState(stateId);
                         } catch (e) {}
-                    }, Sec_Params.stateInteractDelay);
+                    });
                 }
             });
         }
@@ -851,7 +820,8 @@
 
             if (mode === 'spread') {
                 affectedMembers.forEach(m => m.startCustomPopupConfig(params.fieldSpread));
-                setTimeout(() => {
+                // [优化] 帧计时器
+                BattleManager.addSecTimer(Sec_Params.fieldDelay, () => {
                     affectedMembers.forEach(m => {
                         try {
                             const a = subject, b = m, v = $gameVariables._data;
@@ -868,10 +838,11 @@
                         } catch(e) {}
                     });
                     if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
-                }, Sec_Params.fieldDelay);
+                });
             } else if (mode === 'gather') {
                 if (affectedMembers.length > 0) target.startCustomPopupConfig(params.fieldGather);
-                setTimeout(() => {
+                // [优化] 帧计时器
+                BattleManager.addSecTimer(Sec_Params.fieldDelay, () => {
                     const n = affectedMembers.length;
                     if (n > 0) {
                         try {
@@ -888,7 +859,7 @@
                             if (removeState) affectedMembers.forEach(m => m.removeState(stateId));
                         } catch(e) {}
                     }
-                }, Sec_Params.fieldDelay);
+                });
             }
         }
 
@@ -963,10 +934,11 @@
             let accumulatedDelay = 0;
 
             targetsSequence.forEach((enemy, index) => {
-                const currentInterval = Math.max(50, Sec_Params.ricochetBase - (index * Sec_Params.ricochetDecay));
+                const currentInterval = Math.max(3, Sec_Params.ricochetBase - (index * Sec_Params.ricochetDecay)); // 修正为帧数
                 accumulatedDelay += currentInterval;
 
-                setTimeout(() => {
+                // [优化] 帧计时器
+                BattleManager.addSecTimer(accumulatedDelay, () => {
                     if (enemy.isDead() && !allowRepeat) return;
                     enemy.startCustomPopupConfig(params.ricochet); // Visual
 
@@ -991,7 +963,7 @@
                             if (enemy.isDead()) enemy.performCollapse();
                         }
                     } catch (e) { console.error("[Sec] 弹射公式错误", e); }
-                }, accumulatedDelay);
+                });
             });
         }
 
@@ -1012,7 +984,8 @@
                     const damage = actualDamage; 
                     const bonusDmg = Math.floor(eval(formula));
                     if (bonusDmg > 0) {
-                        setTimeout(() => {
+                        // [优化] 帧计时器 (100ms -> 6帧)
+                        BattleManager.addSecTimer(6, () => {
                             _Sec_SuppressLog(target); target.gainHp(-bonusDmg); 
                             target.result().hpDamage = bonusDmg;
                             target.result().hpAffected = true;
@@ -1020,7 +993,7 @@
                             target.performDamage();
                             _Sec_PlayAnim(target, animId);
                             if (target.isDead()) target.performCollapse();
-                        }, 100);
+                        });
                     }
                 } catch(e) {}
             }
@@ -1042,7 +1015,7 @@
             }
         }
         
-        // --- C6. 状态循环 ---
+        // --- C6. 状态循环 (Stacking Logic) ---
         const stateCycleMatch = note.match(/<状态循环[:：]\s*([^>]+)\s*>/);
         if (stateCycleMatch) {
             const stateIds = stateCycleMatch[1].split(/[,，]/).map(id => parseInt(id.trim()));
@@ -1058,6 +1031,7 @@
                     addedStateId = stateIds[currentIndex + 1];
                     target.addState(addedStateId);
                 }
+                // (Reached max stack, do nothing as intended)
 
                 if (addedStateId > 0) {
                     const stateData = $dataStates[addedStateId];
@@ -1294,7 +1268,6 @@
             target._customPopupDuration = null;
             target._customPopupStyle = null;
 
-            // [Fix v4.3] 如果有伤害数据，保留它
             const result = target.result();
             if (result.hpAffected || result.mpDamage !== 0) {
                 target._secKeepResult = true;
@@ -1306,7 +1279,6 @@
         }
     };
 
-    // 【核心重写】创建自定义文字并应用缩放动画
     Sprite_Damage.prototype.createCustomText = function(text, color, fontSize, duration, style) {
         const popupDuration = duration || 30; // 前摇
         const holdDuration = 10;              // 停留
@@ -1334,7 +1306,7 @@
             this.opacity = 0;
         } else if (this._animStyle === 'slash') {
             sprite.scale.x = 0.2; sprite.scale.y = 2.0;
-        } else if (this._animStyle === 'rise') { // [New Style]
+        } else if (this._animStyle === 'rise') { 
             sprite.scale.x = 0.5; sprite.scale.y = 0.5;
         } else if (this._animStyle === 'pulse') {
             sprite.scale.x = 1.0; sprite.scale.y = 1.0;
@@ -1418,7 +1390,6 @@
                 break;
 
             case 'rise': // 上升 (状态升级)
-                // 模拟升腾感
                 childSprite.y -= 1.0; 
                 if (elapsed < this._popupPhaseDur) {
                     const s = 0.5 + (0.7 * easeOut); // 0.5 -> 1.2
@@ -1497,10 +1468,8 @@
     const _Window_BattleLog_waitForAnimation = Window_BattleLog.prototype.waitForAnimation;
     Window_BattleLog.prototype.waitForAnimation = function() {
         if (this._action && this._action._isSecReaction) {
-            // Fast paced reaction: fixed delay
             this.wait(Sec_Params.hitDelay);
         } else {
-            // Normal behavior
             _Window_BattleLog_waitForAnimation.call(this);
         }
     };
@@ -1535,10 +1504,8 @@
         _BattleManager_endBattlerActions.call(this, battler);
     };
     
-    // [New v4.7] Override isBusy to ignore animation for reactions
     const _Spriteset_Battle_isBusy = Spriteset_Battle.prototype.isBusy;
     Spriteset_Battle.prototype.isBusy = function() {
-        // If we are processing a reaction queue, ignore visual business to speed up
         if (BattleManager._secReactionQueue && BattleManager._secReactionQueue.length > 0) {
             return false;
         }

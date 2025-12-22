@@ -1,17 +1,16 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序 (v4.1 交互修复版)
+ * @plugindesc [战斗] TPB行动时间轴 & 实时推拉预览 & 动态排序 (v4.2 安全加强版)
  * @author Secmon
  * @base Sec_CustomDrawBattleStatus
  * @orderAfter Sec_CustomDrawBattleStatus
  *
  * @help
  * ============================================================================
- * Sec_BattleTimeline.js (v4.1 交互修复版)
+ * Sec_BattleTimeline.js (v4.2 安全加强版)
  * ============================================================================
- * * 【更新日志 v4.1】
- * 1. [修复] 修复了“玩家正在选技能时被推条”导致的 'setSkill of undefined' 崩溃。
- * 原理：在剥夺角色行动权的同时，强制刷新场景窗口状态，立即使窗口失效。
+ * * 【更新日志 v4.2】
+ * 1. [安全] 增加了对空对象的防御性检查，防止战斗异常中断时时间轴报错。
  *
  * ============================================================================
  * * @param ---Settings---
@@ -215,8 +214,6 @@
                     this._currentActor = null;
 
                     // [Fix v4.1] 立即刷新场景窗口状态
-                    // 这会强制调用 updateInputWindowVisibility -> closeCommandWindows
-                    // 从而让 Window_BattleSkill 等窗口立即 deactivate，防止 processTouch 继续响应导致崩溃
                     if (SceneManager._scene instanceof Scene_Battle) {
                         SceneManager._scene.updateInputWindowVisibility();
                     }
@@ -297,7 +294,8 @@
     BattleManager.updateTimelinePrediction = function() {
         if (!this.isTpb()) return;
 
-        const allBattlers = this.allBattleMembers().filter(b => b.isAlive() && b.isAppeared());
+        // [安全] 过滤掉可能存在的 null 或 undefined
+        const allBattlers = this.allBattleMembers().filter(b => b && b.isAlive() && b.isAppeared());
         
         let simState = [];
         

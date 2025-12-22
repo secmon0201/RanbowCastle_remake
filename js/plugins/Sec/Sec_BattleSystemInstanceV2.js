@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 核心机制扩展包 V2：召唤/回溯/种族/脚本 (v2.1 全参数开放版)
+ * @plugindesc [战斗] 核心机制扩展包 V2：召唤/回溯/种族/脚本 (v2.3 修复召唤版)
  * @author Secmon (Mechanics V2)
  * @base Sec_BattleSystemInstance
  * @orderAfter Sec_BattleSystemInstance
@@ -8,44 +8,12 @@
  *
  * @help
  * ============================================================================
- * Sec_BattleSystemInstanceV2.js (v2.1)
+ * Sec_BattleSystemInstanceV2.js (v2.3)
  * ============================================================================
- * 这是 Sec_BattleSystemInstance 的官方扩展包 V2。
- * 整合了所有高级 Boss 机制，并开放了所有视觉反馈参数。
- *
- * 【功能模块一览】
- *
- * 1. 🩸 快照系统 (Snapshot) - 用于时间回溯
- * - <Snapshot: Record, KeyName>
- * 记录当前 HP/MP/TP 到指定 Key。
- * - <Snapshot: Restore, KeyName>
- * 读取 Key，若当前 HP 低于记录值，则回溯状态。
- *
- * 2. 🦇 种族光环 (Tribe Bonus) - 用于暗黑体质
- * - 敌人备注: <Race: Dark> (定义种族)
- * - 敌人备注: <TribeBonus: Race, Dark, 2, 1.5>
- * (当场上所有敌人都具备 <Race: Dark> 时，自身 2号属性(攻击) 变为 1.5 倍)
- * * ParamID: 0=MHP, 1=MMP, 2=ATK, 3=DEF, 4=MAT, 5=MDF, 6=AGI, 7=LUK
- *
- * 3. 👻 智能召唤 (Summon) - 用于 Boss 召唤小怪
- * - <SummonUnique: EnemyId, AnimId> (场上没有才召)
- * - <SummonForce: EnemyId, AnimId>  (强制填满 8 人)
- * - 特性：自动队列（一个接一个出）、位置自动排布（左右交替）。
- *
- * 4. 💣 状态亡语 (State Trigger) - 用于钻地突袭/延时爆破
- * - 状态备注: <RemoveTrigger: SkillId>
- * 当状态移除（自然结束或被驱散）时，强制释放指定技能。
- *
- * 5. 🧠 条件技能 (Conditional Skill) - 用于 AI 变招
- * - <ConditionCheck: ids=[1,2], true=X, false=Y>
- * (检测 ID 1和2 是否都在场)
- * - <ConditionCheck: meta=Race, value=Dark, count=All, true=X, false=Y>
- * (检测场上是否 全员(All) 或 任意(Any) 都是 Dark 族)
- *
- * 6. ⚡ 自定义脚本 (Custom Effect) - 万能扩展
- * - <CustomEffect: JS代码>
- * 变量: a(使用者), b(目标), v($gameVariables)
- * 示例: <CustomEffect: if(b.isStateAffected(10)) b.addBuff(2,3)>
+ * 【修复日志 v2.3】
+ * 1. [修复] 补全了 <SummonForce> 和 <SummonUnique> 的解析逻辑。
+ * 之前版本虽然定义了召唤功能，但忘记在技能释放时读取标签，导致召唤无效。
+ * 2. [安全] 保持了 v2.2 的 RemoveTrigger 安全锁和 CustomEffect 容错。
  *
  * ============================================================================
  * @param ---Summon Settings---
@@ -178,7 +146,6 @@
     const pluginName = "Sec_BattleSystemInstanceV2";
     const parameters = PluginManager.parameters(pluginName);
 
-    // 参数封装
     const V2_Params = {
         summon: {
             interval: Number(parameters['SummonInterval'] || 30),
@@ -201,9 +168,6 @@
         }
     };
 
-    // ======================================================================
-    // 工具库
-    // ======================================================================
     function getBattlerPos(battler) {
         if (!battler) return { x: V2_Params.summon.fallbackX, y: V2_Params.summon.fallbackY };
         if (battler.isEnemy()) {
@@ -218,22 +182,17 @@
         }
     }
 
-    // ======================================================================
-    // 1. 种族光环 (Tribe Bonus)
-    // ======================================================================
+    // 1. 种族光环
     const _Game_Enemy_paramRate = Game_Enemy.prototype.paramRate;
     Game_Enemy.prototype.paramRate = function(paramId) {
         let rate = _Game_Enemy_paramRate.call(this, paramId);
-        
         const note = this.enemy().note;
         const matches = note.matchAll(/<TribeBonus[:：]\s*(\w+)\s*[,，]\s*(\w+)\s*[,，]\s*(\d+)\s*[,，]\s*([\d\.]+)\s*>/g);
-        
         for (const match of matches) {
             const metaKey = match[1];
             const metaVal = match[2];
             const targetParamId = parseInt(match[3]);
             const bonusRate = parseFloat(match[4]);
-
             if (paramId === targetParamId) {
                 const troops = $gameTroop.aliveMembers();
                 if (troops.length > 0) {
@@ -250,11 +209,7 @@
         return rate;
     };
 
-    // ======================================================================
-    // 2. 技能效果综合挂钩 (Refactored v2.2)
-    // ======================================================================
-    
-    // 2.1 全局生效模块 (Summon & Snapshot) - 无论打多少人，只执行一次
+    // 2. 全局效果挂钩 (Summon & Snapshot)
     const _Game_Action_applyGlobal = Game_Action.prototype.applyGlobal;
     Game_Action.prototype.applyGlobal = function() {
         _Game_Action_applyGlobal.call(this);
@@ -266,20 +221,13 @@
         const note = item.note;
 
         // --- 快照模块 (Snapshot) ---
-        // (移到此处防止AOE技能导致多次回血/多次记录)
         const snapshotMatches = note.matchAll(/<Snapshot[:：]\s*(Record|Restore)\s*[,，]\s*(\w+)\s*>/gi);
         for (const match of snapshotMatches) {
             const mode = match[1].toLowerCase();
             const key = match[2];
-            
-            // 记录逻辑 (绑定在 subject 身上)
             if (mode === 'record') {
                 subject._secSnapshots = subject._secSnapshots || {};
-                subject._secSnapshots[key] = {
-                    hp: subject.hp,
-                    mp: subject.mp,
-                    tp: subject.tp
-                };
+                subject._secSnapshots[key] = { hp: subject.hp, mp: subject.mp, tp: subject.tp };
                 if (subject.startCustomPopupConfig) {
                     subject.startCustomPopupConfig({ 
                         text: V2_Params.snapshot.recText, 
@@ -288,12 +236,9 @@
                         wait: V2_Params.snapshot.recWait 
                     });
                 }
-            } 
-            // 恢复逻辑
-            else if (mode === 'restore') {
+            } else if (mode === 'restore') {
                 if (subject._secSnapshots && subject._secSnapshots[key]) {
                     const data = subject._secSnapshots[key];
-                    // 仅当当前血量更低时回溯
                     if (subject.hp < data.hp) {
                         subject.setHp(data.hp);
                         subject.setMp(data.mp);
@@ -312,18 +257,31 @@
                 }
             }
         }
+
+        // --- [修复] 召唤模块 (Summon) ---
+        // 之前版本这里缺失了代码，导致技能无法触发召唤
+        const summonUniqueMatches = note.matchAll(/<SummonUnique[:：]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
+        for (const match of summonUniqueMatches) {
+            const enemyId = parseInt(match[1]);
+            const animId = parseInt(match[2]);
+            $gameTroop.requestSummonEnqueue(enemyId, true, subject, animId);
+        }
+
+        const summonForceMatches = note.matchAll(/<SummonForce[:：]\s*(\d+)\s*[,，]\s*(\d+)\s*>/g);
+        for (const match of summonForceMatches) {
+            const enemyId = parseInt(match[1]);
+            const animId = parseInt(match[2]);
+            $gameTroop.requestSummonEnqueue(enemyId, false, subject, animId);
+        }
     };
 
-    // 2.2 针对目标生效模块 (Custom Effect)
+    // 3. 目标效果挂钩 (Custom Effect)
     const _Game_Action_applyItemUserEffect = Game_Action.prototype.applyItemUserEffect;
     Game_Action.prototype.applyItemUserEffect = function(target) {
         _Game_Action_applyItemUserEffect.call(this, target);
-        
         const item = this.item();
         if (!item) return;
         const subject = this.subject();
-
-        // [Fix] 只保留 CustomEffect，召唤逻辑已移至 applyGlobal
         const scriptMatches = item.note.matchAll(/<CustomEffect[:：]\s*([\s\S]+?)\s*>/gi);
         for (const match of scriptMatches) {
             try {
@@ -337,14 +295,11 @@
         }
     };
 
-    // ======================================================================
-    // 3. 条件技能 (Conditional Skill)
-    // ======================================================================
+    // 4. 条件技能
     const _BattleManager_startAction = BattleManager.startAction;
     BattleManager.startAction = function(subject, action, targets) {
         const realSubject = subject || this._subject;
         const realAction = action || (realSubject ? realSubject.currentAction() : null);
-        
         if (realAction && realAction.item()) {
             this.processConditionalSkill(realSubject, realAction);
         }
@@ -354,8 +309,6 @@
     BattleManager.processConditionalSkill = function(subject, action) {
         const item = action.item();
         const note = item.note;
-        
-        // Mode A: ID Check
         const idMatch = note.match(/<ConditionCheck[:：]\s*ids=\[([\d,，\s]+)\]\s*[,，]\s*true=(\d+)\s*[,，]\s*false=(\d+)\s*>/i);
         if (idMatch) {
             const ids = idMatch[1].split(/[,，]/).map(Number);
@@ -367,8 +320,6 @@
             if (targetSkillId > 0) action.setSkill(targetSkillId);
             return;
         }
-
-        // Mode B: Meta Check (Race)
         const metaMatch = note.match(/<ConditionCheck[:：]\s*meta=(\w+)\s*[,，]\s*value=(\w+)\s*[,，]\s*count=(\w+)\s*[,，]\s*true=(\d+)\s*[,，]\s*false=(\d+)\s*>/i);
         if (metaMatch) {
             const metaKey = metaMatch[1];
@@ -377,28 +328,23 @@
             const trueSkillId = parseInt(metaMatch[4]);
             const falseSkillId = parseInt(metaMatch[5]);
             const troops = $gameTroop.aliveMembers();
-            
             let conditionMet = false;
             if (countMode === 'all') {
                 conditionMet = troops.length > 0 && troops.every(member => member.enemy().meta[metaKey] === metaVal);
             } else {
                 conditionMet = troops.some(member => member.enemy().meta[metaKey] === metaVal);
             }
-
             const targetSkillId = conditionMet ? trueSkillId : falseSkillId;
             if (targetSkillId > 0) action.setSkill(targetSkillId);
         }
     };
 
-    // ======================================================================
-    // 4. 状态移除触发 (State Trigger)
-    // ======================================================================
+    // 5. 状态移除触发 (安全加强)
     const _Game_Battler_removeState = Game_Battler.prototype.removeState;
     Game_Battler.prototype.removeState = function(stateId) {
         const isAffected = this.isStateAffected(stateId);
         _Game_Battler_removeState.call(this, stateId);
-
-        if (isAffected) {
+        if (isAffected && $gameParty.inBattle()) {
             const state = $dataStates[stateId];
             if (state && state.note) {
                 const match = state.note.match(/<RemoveTrigger[:：]\s*(\d+)\s*>/);
@@ -413,9 +359,7 @@
         }
     };
 
-    // ======================================================================
-    // 5. 召唤系统逻辑 (Queue & Position)
-    // ======================================================================
+    // 6. 召唤系统逻辑
     const _Game_Troop_initialize = Game_Troop.prototype.initialize;
     Game_Troop.prototype.initialize = function() {
         _Game_Troop_initialize.call(this);
@@ -434,7 +378,6 @@
         this._secSummonQueue.push({ enemyId, isUnique, summoner, animId });
     };
     
-    // 驱动
     Game_Troop.prototype.updateSecSummon = function() {
         if (this._secSummonTimer > 0) {
             this._secSummonTimer--;
@@ -447,7 +390,6 @@
         }
     };
 
-    // 执行
     Game_Troop.prototype.secExecuteSummon = function(req) {
         const { enemyId, isUnique, summoner, animId } = req;
         if (isUnique) {
@@ -462,7 +404,6 @@
         this.secAddEnemy(enemyId, summoner, animId);
     };
 
-    // 复活/重用
     Game_Troop.prototype.secReuseEnemy = function(enemy, newId, summoner, animId) {
         enemy.transform(newId);
         if (summoner && summoner.isAlive()) {
@@ -470,7 +411,6 @@
             enemy._screenX = pos.x;
             enemy._screenY = pos.y;
         } else {
-             // 召唤者不在，使用默认兜底位置
              enemy._screenX = V2_Params.summon.fallbackX;
              enemy._screenY = V2_Params.summon.fallbackY;
         }
@@ -486,7 +426,6 @@
         this.secTriggerSummonPassive(enemy);
     };
 
-    // 新建
     Game_Troop.prototype.secAddEnemy = function(enemyId, summoner, animId) {
         let x, y;
         if (summoner && summoner.isAlive()) {
@@ -494,7 +433,6 @@
             x = pos.x;
             y = pos.y;
         } else {
-            // 使用自定义的兜底位置
             x = V2_Params.summon.fallbackX + Math.randomInt(100) - 50;
             y = V2_Params.summon.fallbackY + Math.randomInt(100) - 50;
         }
@@ -507,19 +445,15 @@
         this.secTriggerSummonPassive(enemy);
     };
 
-    // 计算位置 (左右交替+递增)
     Game_Troop.prototype.calcSummonPos = function(summoner) {
         if (typeof summoner._secSummonCount === 'undefined') summoner._secSummonCount = 0;
         summoner._secSummonCount++;
-        
         const count = summoner._secSummonCount;
         const dir = (count % 2 !== 0) ? -1 : 1; 
         const dist = V2_Params.summon.distX + (count - 1) * V2_Params.summon.distStep;
         const center = getBattlerPos(summoner);
-        
         let x = center.x + dir * dist;
-        let y = center.y + Math.random() * V2_Params.summon.rangeY; // 向下偏移
-
+        let y = center.y + Math.random() * V2_Params.summon.rangeY; 
         x = x.clamp(50, Graphics.boxWidth - 50);
         y = y.clamp(100, Graphics.boxHeight - 50);
         return { x: Math.round(x), y: Math.round(y) };
@@ -533,7 +467,6 @@
         }
     };
 
-    // 驱动
     const _BattleManager_update = BattleManager.update;
     BattleManager.update = function(timeActive) {
         _BattleManager_update.call(this, timeActive);
