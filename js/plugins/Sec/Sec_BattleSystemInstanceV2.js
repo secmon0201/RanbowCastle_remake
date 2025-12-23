@@ -484,4 +484,34 @@
         this._enemySprites.sort(this.compareEnemySprite.bind(this));
     };
 
+    // ======================================================================
+    // 7. [Fix v5.1] 强制行动安全锁 (防止角色在强制行动前死亡导致报错)
+    // ======================================================================
+    const _BattleManager_processForcedAction = BattleManager.processForcedAction;
+    BattleManager.processForcedAction = function() {
+        // 检查是否存在强制行动的角色
+        if (this._actionForcedBattler) {
+            const battler = this._actionForcedBattler;
+            
+            // 安全检查 1: 角色是否已经没有任何行动？(通常是因为中途死亡被 clearActions 了)
+            // 安全检查 2: 角色是否无法行动？
+            if (!battler.currentAction() || !battler.canMove()) {
+                // console.log("Sec_Fix: 拦截了一次无效的强制行动，目标可能已死亡。", battler.name());
+                
+                // 清除强制标志，防止死循环或逻辑卡死
+                this._actionForcedBattler = null;
+                this._subject = null;
+                
+                // 如果是 TPB 模式，可能需要重置一下状态防止卡条
+                if (this.isTpb() && battler.onTpbTimeout) {
+                    battler.onTpbTimeout(); 
+                }
+                return; // 直接中断，不再调用核心方法
+            }
+        }
+        
+        // 只有通过检查才执行原逻辑
+        _BattleManager_processForcedAction.call(this);
+    };
+    
 })();

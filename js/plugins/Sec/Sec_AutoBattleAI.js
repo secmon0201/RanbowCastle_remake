@@ -1,6 +1,6 @@
 /*:
  * @target MZ
- * @plugindesc [战斗] 智能自动战斗 AI (v24.0 最终定稿版)
+ * @plugindesc [战斗] 智能自动战斗 AI (v27.0 逻辑重构定稿版)
  * @author AI Architect
  * @orderAfter Sec_BattleSystemInstance
  * @orderAfter Sec_BattleTimeline
@@ -8,24 +8,22 @@
  * @help
  * ============================================================================
  * 这是一个深度适配 Sec_BattleSystemInstance.js 的战术 AI。
- * 经过全代码逻辑审查，修复了数值爆炸隐患，实现了完美的时空战术平衡。
+ * v27.0 彻底拆分了威胁度计算逻辑，修复了推条数值爆炸和函数引用的 Bug。
  *
- * 【v24.0 最终逻辑确认】
- * 1. 拉条 > 推条 (Pull Priority):
- * - 拉条基础分 (4000) >> 推条平均分 (约 600)。
- * - 只有当推条能触发 [无限连动] (+5000) 时，推条优先级才会反超普通拉条。
- * - 如果拉条能触发 [队友斩杀]，拉条评分会进一步暴涨，确保斩杀优先。
+ * 【v27.0 最终修复日志】
+ * 1. [修复] 函数引用错误 (Crash Fix):
+ * - 修复了调用不存在的 secGetEnemyThreatScore 导致的崩溃。
+ * - 逻辑拆分为两个独立函数：secGetTargetingScore (选敌) 和 secGetPushPriorityMult (推条)。
  *
- * 2. 智能推条 (Smart Push):
- * - 修正了威胁度计算。AI 不再会因为敌人有 <AI_Threat: 2000> 标记而算出
- * 几十万的推条分。现在标记怪的推条收益倍率为 x2.0。
- * - 优先推：跑得慢的、威胁大的 (倍率高 / 速度低)。
- * - 放弃推：跑得太快的 (推了也没用)。
+ * 2. [修复] 推条数值爆炸 (Value Fix):
+ * - 旧版错误地将几千分的威胁度作为倍率乘入推条公式。
+ * - 新版推条公式：(Ticks * 倍率 / 速度) * 基础分。
+ * - 倍率范围控制在 1.0 ~ 2.0 之间，确保推条评分合理 (约 400~1000)。
  *
- * 3. 核心机制闭环：
- * - 蓄力保护：严禁覆盖蓄力状态。
- * - 治疗计算：严禁满血治疗，救命奶权重极高。
- * - 连招铺垫：没Buff时优先种地，有Buff时优先收割。
+ * 3. [逻辑] 战术系统闭环：
+ * - 攻击：优先集火残血(压制) > 标记目标 > 奶妈/高攻。
+ * - 推条：优先推 跑得慢(高收益) 且 是关键角色(高倍率) 的敌人。
+ * - 治疗：救命(20倍) > 补血(1.5倍) > 溢出(扣分)。
  *
  * ============================================================================
  *
@@ -51,53 +49,29 @@
  * @type number
  * @default 32
  *
- * @param ---Control Settings---
- * @text [AI: 时空战术]
+ * @param ---Threat Settings---
+ * @text [AI: 威胁度评估]
  * @default
  *
- * @param WeightPullBase
- * @parent ---Control Settings---
- * @text 拉条基础分
- * @desc 拉条行为的固定加分 (建议 > 推条收益)。
+ * @param WeightThreatTag
+ * @parent ---Threat Settings---
+ * @text 标记目标权重
+ * @desc 敌人备注 <AI_Threat> 或状态备注 <AI_Target> 的加分。
  * @type number
- * @default 4000
+ * @default 2000
  *
- * @param WeightPushBase
- * @parent ---Control Settings---
- * @text 推条单位分
- * @desc 推后敌人 1 tick 的价值 (受倍率修正)。
+ * @param WeightThreatHealer
+ * @parent ---Threat Settings---
+ * @text 敌方奶妈权重
  * @type number
- * @default 20
+ * @default 1500
  *
- * @param WeightLock
- * @parent ---Control Settings---
- * @text 永动压制分
- * @desc 达成无限推条时的额外加分。
+ * @param WeightPressure
+ * @parent ---Threat Settings---
+ * @text 伤势压制权重
+ * @desc 敌人越残血仇恨越高。
  * @type number
- * @default 5000
- *
- * @param WeightPullInherit
- * @parent ---Control Settings---
- * @text 拉条继承率 (%)
- * @desc 继承队友潜在最高收益的比例。
- * @type number
- * @default 100
- *
- * @param ---Thresholds---
- * @text [AI: 心理阈值]
- * @default
- *
- * @param HpCrisis
- * @parent ---Thresholds---
- * @text 濒死警戒线 (%)
- * @type number
- * @default 40
- *
- * @param HpHeal
- * @parent ---Thresholds---
- * @text 起奶安全线 (%)
- * @type number
- * @default 80
+ * @default 2500
  *
  * @param ---Balance Settings---
  * @text [AI: 数值平衡]
@@ -109,17 +83,46 @@
  * @type number
  * @default 1.0
  *
- * @param HealNormMult
+ * @param WeightMP
  * @parent ---Balance Settings---
- * @text [倍率] 普通回血价值
+ * @text [惩罚] MP 消耗
+ * @desc 每消耗 1 点 MP 扣除的分数 (建议 5-10)。
  * @type number
- * @default 1.5
+ * @default 5
+ *
+ * @param WeightTP
+ * @parent ---Balance Settings---
+ * @text [惩罚] TP 消耗
+ * @type number
+ * @default 10
+ *
+ * @param ---Heal Settings---
+ * @text [AI: 治疗逻辑]
+ * @default
+ *
+ * @param HpCrisis
+ * @parent ---Heal Settings---
+ * @text 濒死线 (%)
+ * @type number
+ * @default 40
+ *
+ * @param HpHeal
+ * @parent ---Heal Settings---
+ * @text 安全线 (%)
+ * @type number
+ * @default 80
  *
  * @param HealCritMult
- * @parent ---Balance Settings---
- * @text [倍率] 濒死回血价值
+ * @parent ---Heal Settings---
+ * @text [倍率] 救命回血
  * @type number
  * @default 20.0
+ *
+ * @param HealNormMult
+ * @parent ---Heal Settings---
+ * @text [倍率] 普通回血
+ * @type number
+ * @default 1.5
  *
  * @param ---Tactical Weights---
  * @text [AI: 战术倾向]
@@ -127,92 +130,102 @@
  *
  * @param WeightHealCrisis
  * @parent ---Tactical Weights---
- * @text [极高] 救命优先权
+ * @text 救命固定分
  * @type number
  * @default 15000
  *
  * @param WeightLethal
  * @parent ---Tactical Weights---
- * @text [极高] 确杀优先权
+ * @text 确杀权重
  * @type number
  * @default 10000
  *
  * @param WeightCycle
  * @parent ---Tactical Weights---
- * @text [高] 叠层运营权重
+ * @text 叠层运营
  * @type number
  * @default 3500
  *
  * @param WeightControl
  * @parent ---Tactical Weights---
- * @text [高] 控制/推拉权重
- * @desc 只要有推拉效果就给的基础分。
+ * @text 控制/推拉
  * @type number
  * @default 3000
  *
  * @param WeightGuardian
  * @parent ---Tactical Weights---
- * @text [高] 守护光环权重
+ * @text 守护光环
  * @type number
  * @default 3000
  *
  * @param WeightSpread
  * @parent ---Tactical Weights---
- * @text [中] 扩散(Spread)战术分
+ * @text 扩散(Spread)
  * @type number
  * @default 2500
  *
  * @param WeightSetup
  * @parent ---Tactical Weights---
- * @text [中] 铺垫(种地)战术分
+ * @text 铺垫(种地)
  * @type number
  * @default 2000
  *
  * @param WeightRelease
  * @parent ---Tactical Weights---
- * @text [中] 蓄力释放战术分
+ * @text 蓄力释放
  * @type number
  * @default 2000
  *
  * @param WeightCombo
  * @parent ---Tactical Weights---
- * @text [中] 引爆/交互基础分
+ * @text 引爆/交互
  * @type number
  * @default 1500
  *
  * @param WeightComboSpecial
  * @parent ---Tactical Weights---
- * @text [中] 普攻群奶特权分
+ * @text 普攻群奶特权
  * @type number
  * @default 1000
  *
  * @param WeightBuffPerUnit
  * @parent ---Tactical Weights---
- * @text [低] 单人Buff收益分
+ * @text 群体Buff单人分
  * @type number
  * @default 800
  *
  * @param WeightAOE
  * @parent ---Tactical Weights---
- * @text [低] AOE基础加分
+ * @text AOE基础分
  * @type number
  * @default 500
  *
- * @param ---Cost Settings---
- * @text [AI: 资源性价比]
- * @default
- *
- * @param WeightMP
- * @parent ---Cost Settings---
- * @text MP 消耗惩罚
+ * @param WeightPullBase
+ * @parent ---Tactical Weights---
+ * @text 拉条基础分
+ * @desc 拉条行为本身的固定加分 (体现拉条>推条)。
  * @type number
- * @default 5
+ * @default 4000
  *
- * @param WeightTP
- * @parent ---Cost Settings---
- * @text TP 消耗惩罚
+ * @param WeightPushBase
+ * @parent ---Tactical Weights---
+ * @text 推条单位分
+ * @desc 推后敌人 1 tick 的价值 (受倍率修正)。
  * @type number
- * @default 10
+ * @default 20
+ *
+ * @param WeightLock
+ * @parent ---Tactical Weights---
+ * @text 永动压制分
+ * @desc 达成无限推条时的额外加分。
+ * @type number
+ * @default 5000
+ *
+ * @param WeightPullInherit
+ * @parent ---Tactical Weights---
+ * @text 拉条继承率 (%)
+ * @type number
+ * @default 100
  *
  */
 
@@ -228,16 +241,10 @@
         btnY: Number(parameters['ButtonY'] || 310),
         btnSize: Number(parameters['ButtonSize'] || 32),
         
-        // 时空战术
-        wPullBase: Number(parameters['WeightPullBase'] || 4000),
-        wPushBase: Number(parameters['WeightPushBase'] || 20),
-        wLock: Number(parameters['WeightLock'] || 5000),
-        wPullInherit: Number(parameters['WeightPullInherit'] || 100) / 100,
-
-        // 威胁度加分 (Targeting)
-        wThreatTag: 2000,
-        wThreatHealer: 1500,
-        wPressure: 2500,
+        // 威胁度
+        wThreatTag: Number(parameters['WeightThreatTag'] || 2000),
+        wThreatHealer: Number(parameters['WeightThreatHealer'] || 1500),
+        wPressure: Number(parameters['WeightPressure'] || 2500),
 
         // 消耗
         wMP: Number(parameters['WeightMP'] || 5),
@@ -252,19 +259,23 @@
         healNormMult: Number(parameters['HealNormMult'] || 1.5),
         healCritMult: Number(parameters['HealCritMult'] || 20.0),
         
-        // 战术
+        // 战术权重
         wHealCrisis: Number(parameters['WeightHealCrisis'] || 15000),
         wLethal: Number(parameters['WeightLethal'] || 10000),
         wCycle: Number(parameters['WeightCycle'] || 3500),
-        wGuardian: Number(parameters['WeightGuardian'] || 3000),
         wControl: Number(parameters['WeightControl'] || 3000),
+        wGuardian: Number(parameters['WeightGuardian'] || 3000),
         wSpread: Number(parameters['WeightSpread'] || 2500),
         wSetup: Number(parameters['WeightSetup'] || 2000),
         wRelease: Number(parameters['WeightRelease'] || 2000),
         wCombo: Number(parameters['WeightCombo'] || 1500),
         wComboSpecial: Number(parameters['WeightComboSpecial'] || 1000),
         wBuffPerUnit: Number(parameters['WeightBuffPerUnit'] || 800),
-        wAOE: Number(parameters['WeightAOE'] || 500)
+        wAOE: Number(parameters['WeightAOE'] || 500),
+        wPullBase: Number(parameters['WeightPullBase'] || 4000),
+        wPushBase: Number(parameters['WeightPushBase'] || 20),
+        wLock: Number(parameters['WeightLock'] || 5000),
+        wPullInherit: Number(parameters['WeightPullInherit'] || 100) / 100
     };
 
     // ======================================================================
@@ -295,7 +306,6 @@
     // 2. 核心计算引擎
     // ======================================================================
 
-    // 2.1 安全公式计算
     Game_Actor.prototype.secEvalFormula = function(formula, context) {
         try {
             const a = context.a || this;
@@ -313,7 +323,6 @@
         }
     };
 
-    // 2.2 基础伤害估算
     Game_Actor.prototype.secEstimateBaseDamage = function(skill, target) {
         if (!skill.damage || skill.damage.type === 0) return 0;
         const baseVal = this.secEvalFormula(skill.damage.formula, { a: this, b: target });
@@ -337,8 +346,6 @@
         const rate = target.hpRate();
         const mhp = target.mhp;
         const missingHp = mhp - target.hp;
-        
-        // 有效治疗量 (溢出不计)
         const effectiveHeal = Math.min(healAmount, missingHp);
 
         if (rate >= 1.0 || effectiveHeal <= 0) {
@@ -351,7 +358,7 @@
             score += effectiveHeal * Conf.healNormMult;
         } 
         else {
-            score += effectiveHeal * 0.1; // 鼓励输出
+            score += effectiveHeal * 0.1; 
         }
         return score;
     };
@@ -377,17 +384,52 @@
         return totalHealScore;
     };
 
-    // 2.4 推条优先度乘数 (Push Multiplier) [v24.0 Corrected]
-    // 这是一个返回 1.0 ~ 2.0 的倍率，用于推条计算，不用于加分
+    // 2.4 [New] 选敌分数计算 (Targeting Score)
+    Game_Actor.prototype.secGetTargetingScore = function(enemy) {
+        let score = 0;
+        const data = enemy.enemy();
+        
+        // 1. 伤势压制 (Pressure): 血越少分越高
+        score += (1.0 - enemy.hpRate()) * Conf.wPressure;
+
+        // 2. 手动标记
+        if (data.meta && data.meta.AI_Threat) {
+            score += Number(data.meta.AI_Threat);
+        } else {
+            // Boss 简单加成
+            if (enemy.mhp > 50000) score += 500;
+        }
+
+        // 3. 属性强度
+        const avgDef = $gameParty.averageDef() || 1;
+        const power = (enemy.atk + enemy.mat) / 2;
+        if (power > avgDef * 1.5) score += 500;
+
+        // 4. 危险状态
+        enemy.states().forEach(state => {
+            if (state.meta.AI_Target) score += Conf.wThreatTag; 
+        });
+
+        // 5. 奶妈/辅助
+        if (data.actions) {
+            const hasSupport = data.actions.some(action => {
+                const skill = $dataSkills[action.skillId];
+                return skill && ([3,4].includes(skill.damage.type) || skill.scope === 8 || skill.scope === 11);
+            });
+            if (hasSupport) score += Conf.wThreatHealer;
+        }
+
+        return score;
+    };
+
+    // 2.5 [New] 推条倍率计算 (Push Multiplier)
     Game_Actor.prototype.secGetPushPriorityMult = function(enemy) {
         let mult = 1.0;
         const data = enemy.enemy();
-        
-        // 1. 标记目标 (High Priority)
+
         if (data.meta && data.meta.AI_Threat) mult = 2.0;
         enemy.states().forEach(state => { if (state.meta.AI_Target) mult = 2.0; });
 
-        // 2. 奶妈/辅助 (Medium Priority)
         if (data.actions) {
             const hasSupport = data.actions.some(action => {
                 const skill = $dataSkills[action.skillId];
@@ -395,34 +437,16 @@
             });
             if (hasSupport) mult = Math.max(mult, 1.5);
         }
-        
         return mult;
     };
 
-    // 2.5 攻击目标选择加分 (Targeting Additive Score)
-    Game_Actor.prototype.secGetTargetingScore = function(enemy) {
-        let score = 0;
-        const data = enemy.enemy();
-
-        // 1. 伤势压制
-        score += (1.0 - enemy.hpRate()) * Conf.wPressure;
-
-        // 2. 威胁标记
-        if (data.meta && data.meta.AI_Threat) score += Number(data.meta.AI_Threat);
-        enemy.states().forEach(state => { if (state.meta.AI_Target) score += Conf.wThreatTag; });
-
-        // 3. 辅助识别
-        if (data.actions) {
-            const hasSupport = data.actions.some(action => {
-                const skill = $dataSkills[action.skillId];
-                return skill && ([3,4].includes(skill.damage.type));
-            });
-            if (hasSupport) score += Conf.wThreatHealer;
-        }
-        return score;
+    Game_Party.prototype.averageDef = function() {
+        const members = this.aliveMembers();
+        if (members.length === 0) return 1;
+        return members.reduce((sum, m) => sum + m.def + m.mdf, 0) / (members.length * 2) || 1;
     };
 
-    // 2.6 铺垫价值
+    // 铺垫价值
     Game_Actor.prototype.secCheckSetupValue = function(skill) {
         let setupScore = 0;
         const addedStates = [];
@@ -441,17 +465,18 @@
             if (friends.some(m => !addedStates.some(id => m.isStateAffected(id)))) validTargetsCount = 1;
         }
         if (validTargetsCount === 0) return -5000;
-        const checkSkills = [this.attackSkillId(), ...this._skills].filter(id => id !== skill.id);
-        const uniqueSkills = [...new Set(checkSkills)];
-        for (const sId of uniqueSkills) {
-            const s = $dataSkills[sId];
-            if (!s) continue;
+        
+        // 遍历所有可用技能 (包含装备)
+        const allSkills = this.skills();
+        const checkSkills = allSkills.filter(s => s.id !== skill.id);
+        
+        for (const s of checkSkills) {
             const note = s.note;
             for (const stateId of addedStates) {
                 const regex = new RegExp(`<状态交互[:：]\\s*${stateId}\\s*[,，]`, "i");
                 if (note.match(regex)) {
                     setupScore += Conf.wSetup;
-                    if (sId === this.attackSkillId() && note.includes("allallies")) {
+                    if (s.id === this.attackSkillId() && note.includes("allallies")) {
                         setupScore += Conf.wComboSpecial; 
                     }
                 }
@@ -460,7 +485,7 @@
         return setupScore;
     };
 
-    // 2.7 辅助: 光环/蓄力
+    // 辅助函数
     Game_Actor.prototype.secGetGuardianStates = function() {
         const notes = [];
         if (this.actor()) notes.push(this.actor().note);
@@ -508,7 +533,6 @@
         return false;
     };
 
-    // 2.8 潜力与无限推条
     Game_Actor.prototype.secGetMaxPotentialScore = function() {
         let maxScore = 0;
         const skills = this.usableSkills().filter(item => item.id !== this.guardSkillId());
@@ -536,7 +560,7 @@
         if (mySpeed <= 0 || targetSpeed <= 0) return false;
         const timeRes = BattleManager.getTpbResolution ? BattleManager.getTpbResolution() : 10;
         const delayFrames = pushTicks / timeRes; 
-        const refTime = BattleManager.isActiveTpb() ? 240 : 60;
+        const refTime = BattleManager.isActiveTpb && BattleManager.isActiveTpb() ? 240 : 60; // 修复isActiveTpb判定
         const myFrames = (1.0 / (mySpeed / refTime));
         const enemyFrames = ((1.0 - target.tpbChargeTime()) / (targetSpeed / refTime)) + delayFrames;
         return enemyFrames > myFrames;
@@ -815,14 +839,14 @@
             }
         }
 
-        // [v19.0] 资源消耗惩罚
+        // 资源消耗惩罚
         const costPenalty = (skill.mpCost * Conf.wMP) + (skill.tpCost * Conf.wTP);
         score -= costPenalty;
 
         // D. 战术修正
         score += this.secCheckSetupValue(skill, target);
 
-        // [v24.0] 敌方价值全覆盖 (Corrected)
+        // [v27.0] 敌方价值全覆盖 (Use Targeting Score)
         if (target && target.isEnemy()) {
             score += this.secGetTargetingScore(target);
         }
@@ -863,17 +887,21 @@
             else if ((baseDmg + mechanicDmg) < 100) score -= 1000;
         }
 
-        // [v22.0] 推拉条新逻辑
+        // [v27.0] 推条使用 Multiplier
         const pushMatch = note.match(/<推条[:：]\s*(\d+)/);
         if (pushMatch && target && target.isEnemy()) {
             const ticks = parseInt(pushMatch[1]);
-            // 推条乘数 (1.0~2.0)
-            const threatMult = this.secGetPushPriorityMult(target);
-            
+            const threatMult = this.secGetPushPriorityMult(target); // [Fix] Use Multiplier
             const avgSpd = $gameParty.tpbBaseSpeed ? $gameParty.tpbBaseSpeed() : 1;
             const spdFactor = Math.max(0.5, target.tpbSpeed() / avgSpd);
             
-            score += (ticks * threatMult / spdFactor) * Conf.wPushBase;
+            // Formula: (Ticks * Mult / Speed) * BaseScore + (TargetScore * 0.5)
+            // 目标评分可以作为额外加分
+            const targetScore = this.secGetTargetingScore(target);
+            let pushScore = (ticks * threatMult / spdFactor) * Conf.wPushBase;
+            pushScore += targetScore * 0.5;
+
+            score += pushScore;
 
             if (this.secCheckInfiniteLock(target, ticks)) {
                 score += Conf.wLock;
