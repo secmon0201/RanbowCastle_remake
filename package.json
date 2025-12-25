@@ -1,7 +1,7 @@
 {
     "name": "rmmz-game",
     "main": "index.html",
-    "chromium-args": "--force-color-profile=srgb --disable-renderer-backgrounding --disable-background-timer-throttling --disable-features=CalculateNativeWinOcclusion",
+    "chromium-args": "--force-color-profile=srgb",
     "window": {
         "title": "彩虹城堡完美重置版",
         "width": 480,
